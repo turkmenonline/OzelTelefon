@@ -23,7 +23,7 @@ fun VoicemailScreen() {
             "Sesli mesaj kutunu aramak için dokun.",
             color = IOS.Gray,
             fontSize = 16.sp,
-            modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp)
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
         )
         Text(
             "Sesli Mesajı Ara",
@@ -32,7 +32,7 @@ fun VoicemailScreen() {
             fontWeight = FontWeight.Medium,
             modifier = Modifier
                 .clickable { callVoicemail(context) }
-                .padding(horizontal = 20.dp, vertical = 12.dp)
+                .padding(horizontal = 16.dp, vertical = 12.dp)
         )
     }
 }

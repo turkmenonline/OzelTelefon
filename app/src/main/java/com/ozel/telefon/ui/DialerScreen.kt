@@ -15,9 +15,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Backspace
-import androidx.compose.material.icons.filled.Call
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -57,9 +54,9 @@ fun DialerScreen(initialNumber: String, onCall: (String) -> Unit) {
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .padding(horizontal = 24.dp),
+            .padding(start = 24.dp, end = 24.dp, bottom = 28.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center
+        verticalArrangement = Arrangement.Bottom
     ) {
         Box(
             modifier = Modifier
@@ -90,30 +87,30 @@ fun DialerScreen(initialNumber: String, onCall: (String) -> Unit) {
                     )
                 }
             }
-            Spacer(Modifier.height(14.dp))
+            Spacer(Modifier.height(18.dp))
         }
 
         Row(
             horizontalArrangement = Arrangement.spacedBy(24.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Spacer(Modifier.size(74.dp))
+            Spacer(Modifier.size(78.dp))
             Box(
                 modifier = Modifier
-                    .size(74.dp)
+                    .size(78.dp)
                     .clip(CircleShape)
                     .background(IOS.Green)
                     .clickable { onCall(number) },
                 contentAlignment = Alignment.Center
             ) {
                 Icon(
-                    Icons.Filled.Call,
+                    F7.PhoneFill,
                     contentDescription = "Ara",
                     tint = Color.White,
                     modifier = Modifier.size(32.dp)
                 )
             }
-            Box(modifier = Modifier.size(74.dp), contentAlignment = Alignment.Center) {
+            Box(modifier = Modifier.size(78.dp), contentAlignment = Alignment.Center) {
                 if (number.isNotEmpty()) {
                     Box(
                         modifier = Modifier
@@ -126,7 +123,7 @@ fun DialerScreen(initialNumber: String, onCall: (String) -> Unit) {
                         contentAlignment = Alignment.Center
                     ) {
                         Icon(
-                            Icons.Filled.Backspace,
+                            F7.DeleteLeftFill,
                             contentDescription = "Sil",
                             tint = IOS.Gray,
                             modifier = Modifier.size(28.dp)
@@ -148,7 +145,7 @@ private fun DialKey(
 ) {
     Box(
         modifier = Modifier
-            .size(74.dp)
+            .size(78.dp)
             .clip(CircleShape)
             .background(MaterialTheme.colorScheme.surfaceVariant)
             .combinedClickable(onLongClick = onLongClick, onClick = onClick),
@@ -157,16 +154,16 @@ private fun DialKey(
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
             Text(
                 text = digit,
-                fontSize = 32.sp,
+                fontSize = 34.sp,
                 fontWeight = FontWeight.Light,
                 color = MaterialTheme.colorScheme.onSurface
             )
             if (letters.isNotEmpty()) {
                 Text(
                     text = letters,
-                    fontSize = 10.sp,
+                    fontSize = 11.sp,
                     fontWeight = FontWeight.Bold,
-                    letterSpacing = 2.sp,
+                    letterSpacing = 2.5.sp,
                     color = MaterialTheme.colorScheme.onSurface
                 )
             }

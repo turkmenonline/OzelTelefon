@@ -17,9 +17,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.CallMade
-import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -56,9 +53,6 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.filled.AccountCircle
-import androidx.compose.material.icons.filled.Remove
-import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.rememberCoroutineScope
@@ -381,9 +375,9 @@ private fun EditPopup(onDismiss: () -> Unit, onNameAndPhoto: () -> Unit, onSelec
                 .clip(RoundedCornerShape(14.dp))
                 .background(MaterialTheme.colorScheme.surfaceVariant)
         ) {
-            PopupRow("Ad ve Fotoğraf Ayarla", Icons.Filled.AccountCircle, onNameAndPhoto)
+            PopupRow("Ad ve Fotoğraf Ayarla", F7.PersonCropCircleFill, onNameAndPhoto)
             HorizontalDivider(thickness = 0.5.dp, color = MaterialTheme.colorScheme.background.copy(alpha = 0.5f))
-            PopupRow("Seç", Icons.Outlined.CheckCircle, onSelect)
+            PopupRow("Seç", F7.CheckmarkCircle, onSelect)
         }
     }
 }
@@ -462,7 +456,7 @@ private fun RecentRow(
             verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 8.dp)
+                .padding(start = 16.dp, end = 16.dp, top = 9.dp, bottom = 9.dp)
         ) {
             AnimatedVisibility(
                 visible = editing,
@@ -478,18 +472,18 @@ private fun RecentRow(
                             .clickable(onClick = onArm),
                         contentAlignment = Alignment.Center
                     ) {
-                        Icon(Icons.Filled.Remove, "Sil", tint = Color.White, modifier = Modifier.size(15.dp))
+                        Icon(F7.Minus, "Sil", tint = Color.White, modifier = Modifier.size(15.dp))
                     }
                     Spacer(Modifier.width(12.dp))
                 }
             }
-            ContactAvatar(call.number, contactName, 42.dp, 18.sp)
+            ContactAvatar(call.number, contactName, 40.dp, 17.sp)
             Spacer(Modifier.width(12.dp))
             Column(Modifier.weight(1f)) {
                 Text(
                     title,
                     fontSize = 16.sp,
-                    fontWeight = FontWeight.Medium,
+                    fontWeight = FontWeight.SemiBold,
                     color = if (call.missed) IOS.Red else MaterialTheme.colorScheme.onBackground,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
@@ -497,7 +491,7 @@ private fun RecentRow(
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     if (outgoing) {
                         Icon(
-                            Icons.Filled.CallMade,
+                            F7.PhoneFillArrowUpRight,
                             contentDescription = "Giden arama",
                             tint = IOS.Gray,
                             modifier = Modifier.size(13.dp)
@@ -523,9 +517,9 @@ private fun RecentRow(
                     exit = shrinkHorizontally(tween(180)) + fadeOut(tween(120))
                 ) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Spacer(Modifier.width(10.dp))
+                        Spacer(Modifier.width(8.dp))
                         Icon(
-                            Icons.Outlined.Info,
+                            F7.InfoCircle,
                             contentDescription = "Bilgi",
                             tint = IOS.Blue,
                             modifier = Modifier
@@ -537,7 +531,7 @@ private fun RecentRow(
             }
         }
         HorizontalDivider(
-            modifier = Modifier.padding(start = if (editing) 106.dp else 70.dp),
+            modifier = Modifier.padding(start = if (editing) 102.dp else 68.dp),
             thickness = 0.5.dp,
             color = dividerColor
         )

@@ -1,5 +1,7 @@
 package com.ozel.telefon
 
+import com.ozel.telefon.ui.F7
+
 import android.Manifest
 import android.app.role.RoleManager
 import android.content.Context
@@ -53,6 +55,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -61,13 +64,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.AccountCircle
-import androidx.compose.material.icons.filled.Dialpad
-import androidx.compose.material.icons.filled.Schedule
-import androidx.compose.material.icons.filled.Star
-import androidx.compose.material.icons.filled.Voicemail
-import androidx.compose.material.icons.filled.Phone
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -151,72 +147,30 @@ private fun isDefaultDialer(context: Context): Boolean =
     context.getSystemService(TelecomManager::class.java).defaultDialerPackage == context.packageName
 
 @Composable
-private fun TabIcon(index: Int, tint: Color, cutout: Color) {
-    Canvas(Modifier.size(24.dp)) {
-        val w = size.width
-        val cx = w / 2f
-        val cy = size.height / 2f
-        when (index) {
-            0 -> { // Hızlı Arama: dolu yıldız
-                val path = Path()
-                val outer = w * 0.52f
-                val inner = outer * 0.46f
-                val top = cy + w * 0.03f
-                for (i in 0 until 10) {
-                    val rad = if (i % 2 == 0) outer else inner
-                    val ang = -Math.PI / 2 + i * Math.PI / 5
-                    val x = cx + (rad * cos(ang)).toFloat()
-                    val y = top + (rad * sin(ang)).toFloat()
-                    if (i == 0) path.moveTo(x, y) else path.lineTo(x, y)
-                }
-                path.close()
-                drawPath(path, tint)
-            }
-            1 -> { // Son Aramalar: dolu saat
-                drawCircle(tint, w * 0.46f, Offset(cx, cy))
-                val sw = w * 0.085f
-                drawLine(cutout, Offset(cx, cy), Offset(cx, cy - w * 0.25f), sw, StrokeCap.Round)
-                drawLine(cutout, Offset(cx, cy), Offset(cx + w * 0.2f, cy), sw, StrokeCap.Round)
-            }
-            2 -> { // Kişiler: dolu daire içinde kişi
-                val r = w * 0.46f
-                drawCircle(tint, r, Offset(cx, cy))
-                val clip = Path().apply { addOval(Rect(Offset(cx, cy), r)) }
-                clipPath(clip) {
-                    drawCircle(cutout, w * 0.17f, Offset(cx, cy - w * 0.1f))
-                    drawCircle(cutout, w * 0.34f, Offset(cx, cy + w * 0.5f))
-                }
-            }
-            3 -> { // Klavye: 3x3 + alttaki nokta
-                val dot = w * 0.075f
-                val xs = listOf(w * 0.22f, cx, w * 0.78f)
-                val ys = listOf(w * 0.14f, w * 0.38f, w * 0.62f, w * 0.86f)
-                for (row in 0 until 3) for (x in xs) drawCircle(tint, dot, Offset(x, ys[row]))
-                drawCircle(tint, dot, Offset(cx, ys[3]))
-            }
-            else -> { // Sesli Mesaj: iki halka + alt çizgi
-                val r = w * 0.2f
-                val sw = w * 0.085f
-                val y = w * 0.4f
-                drawCircle(tint, r, Offset(w * 0.27f, y), style = Stroke(sw))
-                drawCircle(tint, r, Offset(w * 0.73f, y), style = Stroke(sw))
-                drawLine(tint, Offset(w * 0.27f, y + r), Offset(w * 0.73f, y + r), sw, StrokeCap.Round)
-            }
-        }
+private fun TabIcon(index: Int, tint: Color) {
+    // Sesli mesaj (kaset) ikonu yatay uzun; iPhone'daki gibi daha geniş çizilir.
+    Box(Modifier.size(27.dp), contentAlignment = Alignment.Center) {
+        Icon(
+            tabs[index].icon,
+            contentDescription = null,
+            tint = tint,
+            modifier = Modifier.requiredSize(if (index == 4) 37.dp else 27.dp)
+        )
     }
 }
 
 private class Tab(val label: String, val icon: ImageVector)
 
 private val tabs = listOf(
-    Tab("Hızlı Arama", Icons.Filled.Star),
-    Tab("Son Aramalar", Icons.Filled.Schedule),
-    Tab("Kişiler", Icons.Filled.AccountCircle),
-    Tab("Klavye", Icons.Filled.Dialpad),
-    Tab("Sesli Mesaj", Icons.Filled.Voicemail)
+    Tab("Hızlı Arama", F7.StarFill),
+    Tab("Son Aramalar", F7.ClockFill),
+    Tab("Kişiler", F7.PersonCropCircleFill),
+    Tab("Klavye", F7.CircleGrid3x3Fill),
+    Tab("Sesli Mesaj", F7.Recordingtape)
 )
 
 private const val KEYPAD_TAB = 3
+private const val RECENTS_TAB = 1
 
 @Composable
 fun AppRoot(initialNumber: String) {
@@ -256,7 +210,7 @@ fun AppRoot(initialNumber: String) {
         if (!isDefault) openDefaultAppsSettings()
     }
 
-    var tab by rememberSaveable { mutableIntStateOf(KEYPAD_TAB) }
+    var tab by rememberSaveable { mutableIntStateOf(RECENTS_TAB) }
     LaunchedEffect(initialNumber) {
         if (initialNumber.isNotBlank()) tab = KEYPAD_TAB
     }
@@ -383,12 +337,12 @@ fun AppRoot(initialNumber: String) {
                             horizontalAlignment = Alignment.CenterHorizontally,
                             verticalArrangement = Arrangement.Top
                         ) {
-                            TabIcon(i, tint, MaterialTheme.colorScheme.surface)
+                            TabIcon(i, tint)
                             Spacer(Modifier.height(1.dp))
                             Text(
                                 t.label,
                                 color = tint,
-                                fontSize = 9.5.sp,
+                                fontSize = 10.sp,
                                 letterSpacing = (-0.1).sp,
                                 maxLines = 1,
                                 softWrap = false,

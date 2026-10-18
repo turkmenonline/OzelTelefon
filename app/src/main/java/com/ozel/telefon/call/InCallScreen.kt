@@ -1,5 +1,7 @@
 package com.ozel.telefon.call
 
+import com.ozel.telefon.ui.F7
+
 import android.telecom.Call as TCall
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.tween
@@ -23,17 +25,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Call
-import androidx.compose.material.icons.filled.CallEnd
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.Dialpad
-import androidx.compose.material.icons.filled.Mic
-import androidx.compose.material.icons.filled.MicOff
-import androidx.compose.material.icons.filled.Pause
-import androidx.compose.material.icons.filled.PersonAdd
-import androidx.compose.material.icons.filled.Videocam
-import androidx.compose.material.icons.filled.VolumeUp
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -170,8 +161,8 @@ fun InCallScreen(
                             .padding(horizontal = 16.dp),
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
-                        LabeledRound(IOS.Red, Icons.Filled.CallEnd, "Reddet", onReject)
-                        LabeledRound(IOS.Green, Icons.Filled.Call, "Kabul Et", onAnswer)
+                        LabeledRound(IOS.Red, F7.PhoneDownFill, "Reddet", onReject)
+                        LabeledRound(IOS.Green, F7.PhoneFill, "Kabul Et", onAnswer)
                     }
                 }
 
@@ -194,7 +185,7 @@ fun InCallScreen(
                     ) {
                         Spacer(Modifier.width(88.dp))
                         Spacer(Modifier.width(22.dp))
-                        RoundButton(IOS.Red, Icons.Filled.CallEnd, 72, onHangup)
+                        RoundButton(IOS.Red, F7.PhoneDownFill, 72, onHangup)
                         Spacer(Modifier.width(22.dp))
                         Box(Modifier.width(88.dp), contentAlignment = Alignment.Center) {
                             Text(
@@ -214,14 +205,14 @@ fun InCallScreen(
                     val canHold = ui.state == TCall.STATE_ACTIVE || ui.state == TCall.STATE_HOLDING
                     Row(Modifier.fillMaxWidth()) {
                         Cell {
-                            GridButton(Icons.Filled.VolumeUp, "Hoparlör", active = audio.speaker, onClick = onSpeaker)
+                            GridButton(F7.Speaker3Fill, "Hoparlör", active = audio.speaker, onClick = onSpeaker)
                         }
                         Cell {
-                            GridButton(Icons.Filled.Videocam, "FaceTime", enabled = false, onClick = {})
+                            GridButton(F7.VideocamFill, "FaceTime", enabled = false, onClick = {})
                         }
                         Cell {
                             GridButton(
-                                if (audio.muted) Icons.Filled.MicOff else Icons.Filled.Mic,
+                                if (audio.muted) F7.MicSlashFill else F7.MicFill,
                                 "Sessiz",
                                 active = audio.muted,
                                 onClick = onMute
@@ -233,18 +224,18 @@ fun InCallScreen(
                         Cell {
                             if (canHold) {
                                 GridButton(
-                                    Icons.Filled.Pause, "Beklet",
+                                    F7.PauseFill, "Beklet",
                                     active = ui.state == TCall.STATE_HOLDING, onClick = onHold
                                 )
                             } else {
-                                GridButton(Icons.Filled.PersonAdd, "Ekle", enabled = false, onClick = {})
+                                GridButton(F7.PersonBadgePlusFill, "Ekle", enabled = false, onClick = {})
                             }
                         }
                         Cell {
-                            LabeledRound(IOS.Red, Icons.Filled.CallEnd, "Bitir", onHangup)
+                            LabeledRound(IOS.Red, F7.PhoneDownFill, "Bitir", onHangup)
                         }
                         Cell {
-                            GridButton(Icons.Filled.Dialpad, "Klavye", onClick = { showKeypad = true })
+                            GridButton(F7.CircleGrid3x3Fill, "Klavye", onClick = { showKeypad = true })
                         }
                     }
                 }
@@ -269,7 +260,7 @@ private fun RoundButton(color: Color, icon: ImageVector, size: Int, onClick: () 
             .clickable(onClick = onClick),
         contentAlignment = Alignment.Center
     ) {
-        Icon(icon, contentDescription = null, tint = Color.White, modifier = Modifier.size((size * 0.42f).dp))
+        Icon(icon, contentDescription = null, tint = Color.White, modifier = Modifier.size((size * 0.46f).dp))
     }
 }
 
@@ -313,7 +304,7 @@ private fun GridButton(
                 icon,
                 contentDescription = label,
                 tint = (if (active) Color.Black else Color.White).copy(alpha = if (enabled) 1f else 0.4f),
-                modifier = Modifier.size(32.dp)
+                modifier = Modifier.size(40.dp)
             )
         }
         Spacer(Modifier.height(8.dp))
@@ -411,7 +402,7 @@ fun EndedScreen(title: String, reason: String, onDismiss: () -> Unit, onRedial: 
                         contentAlignment = Alignment.Center
                     ) {
                         Icon(
-                            Icons.Filled.Close,
+                            F7.Xmark,
                             contentDescription = "Vazgeç",
                             tint = Color.White,
                             modifier = Modifier.size(30.dp)
@@ -420,7 +411,7 @@ fun EndedScreen(title: String, reason: String, onDismiss: () -> Unit, onRedial: 
                     Spacer(Modifier.height(8.dp))
                     Text("Vazgeç", color = Color.White, fontSize = 14.sp)
                 }
-                LabeledRound(IOS.Green, Icons.Filled.Call, "Geri Ara", onRedial)
+                LabeledRound(IOS.Green, F7.PhoneFill, "Geri Ara", onRedial)
             }
             Spacer(Modifier.height(30.dp))
         }

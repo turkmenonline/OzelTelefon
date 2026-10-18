@@ -33,12 +33,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.AddCircle
-import androidx.compose.material.icons.filled.ArrowBackIosNew
-import androidx.compose.material.icons.filled.Call
-import androidx.compose.material.icons.filled.ChatBubble
-import androidx.compose.material.icons.filled.RemoveCircle
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -78,10 +72,6 @@ import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.material.icons.filled.ChevronLeft
-import androidx.compose.material.icons.filled.ChevronRight
-import androidx.compose.material.icons.filled.Email
-import androidx.compose.material.icons.filled.Videocam
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.ui.graphics.Brush
@@ -329,10 +319,10 @@ private fun ActionRow(
             .padding(horizontal = 8.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        GlassAction(Icons.Filled.ChatBubble, "mesaj", canCall, Modifier.weight(1f), onMessage)
-        GlassAction(Icons.Filled.Call, "ara", canCall, Modifier.weight(1f), onCall)
-        GlassAction(Icons.Filled.Videocam, "görüntülü", true, Modifier.weight(1f), onVideo)
-        GlassAction(Icons.Filled.Email, "e-posta", false, Modifier.weight(1f)) { }
+        GlassAction(F7.BubbleLeftFill, "mesaj", canCall, Modifier.weight(1f), onMessage)
+        GlassAction(F7.PhoneFill, "ara", canCall, Modifier.weight(1f), onCall)
+        GlassAction(F7.VideocamFill, "görüntülü", true, Modifier.weight(1f), onVideo)
+        GlassAction(F7.EnvelopeFill, "e-posta", false, Modifier.weight(1f)) { }
     }
 }
 
@@ -689,7 +679,7 @@ private fun ViewMode(
                                         Text(a.label, fontSize = 15.sp, color = onBg)
                                         Text(a.name, fontSize = 15.sp, color = IOS.Blue)
                                     }
-                                    Icon(Icons.Filled.ChevronRight, null, tint = IOS.Gray, modifier = Modifier.size(20.dp))
+                                    Icon(F7.ChevronRight, null, tint = IOS.Gray, modifier = Modifier.size(20.dp))
                                 }
                                 if (i < accounts.lastIndex) {
                                     HorizontalDivider(
@@ -735,7 +725,7 @@ private fun ViewMode(
             verticalAlignment = Alignment.CenterVertically
         ) {
             GlassTopButton(Modifier.size(36.dp), onBack) {
-                Icon(Icons.Filled.ChevronLeft, "Geri", tint = Color.White, modifier = Modifier.size(26.dp))
+                Icon(F7.ChevronLeft, "Geri", tint = Color.White, modifier = Modifier.size(26.dp))
             }
             if (detail != null) {
                 GlassTopButton(Modifier, onEdit) {
@@ -943,7 +933,7 @@ private fun EditMode(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Icon(
-                        Icons.Filled.RemoveCircle,
+                        F7.MinusCircleFill,
                         contentDescription = "Numarayı sil",
                         tint = IOS.Red,
                         modifier = Modifier
@@ -973,7 +963,7 @@ private fun EditMode(
                     .padding(horizontal = 12.dp, vertical = 12.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Icon(Icons.Filled.AddCircle, null, tint = IOS.Green, modifier = Modifier.size(24.dp))
+                Icon(F7.PlusCircleFill, null, tint = IOS.Green, modifier = Modifier.size(24.dp))
                 Spacer(Modifier.width(10.dp))
                 Text("telefon ekle", fontSize = 17.sp, color = MaterialTheme.colorScheme.onBackground)
             }

@@ -24,9 +24,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ChevronLeft
-import androidx.compose.material.icons.filled.Add
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -152,26 +149,27 @@ fun ContactsScreen(
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(horizontal = 16.dp, vertical = 8.dp),
+                            .padding(start = 2.dp, end = 14.dp, top = 8.dp, bottom = 8.dp),
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         // iOS'taki "‹ Listeler" (liste/grup özelliği yok; görünüm için)
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Icon(
-                                Icons.Filled.ChevronLeft,
+                                F7.ChevronLeft,
                                 contentDescription = null,
                                 tint = IOS.Blue,
                                 modifier = Modifier.size(26.dp)
                             )
+                            Spacer(Modifier.width(2.dp))
                             Text("Listeler", color = IOS.Blue, fontSize = 17.sp)
                         }
                         Icon(
-                            Icons.Filled.Add,
+                            F7.Plus,
                             contentDescription = "Kişi ekle",
                             tint = IOS.Blue,
                             modifier = Modifier
-                                .size(30.dp)
+                                .size(26.dp)
                                 .clickable { onAdd() }
                         )
                     }
@@ -198,18 +196,18 @@ fun ContactsScreen(
                             verticalAlignment = Alignment.CenterVertically,
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(horizontal = 20.dp, vertical = 14.dp)
+                                .padding(horizontal = 16.dp, vertical = 12.dp)
                         ) {
-                            InitialsAvatar(profile, 48.dp, 19.sp)
-                            Spacer(Modifier.width(16.dp))
+                            InitialsAvatar(profile, 60.dp, 24.sp)
+                            Spacer(Modifier.width(14.dp))
                             Column {
                                 Text(
                                     profile ?: "",
-                                    fontSize = 19.sp,
+                                    fontSize = 20.sp,
                                     fontWeight = FontWeight.SemiBold,
                                     color = MaterialTheme.colorScheme.onBackground
                                 )
-                                Text("Kartım", fontSize = 14.sp, color = IOS.Gray)
+                                Text("Kartım", fontSize = 15.sp, color = IOS.Gray)
                             }
                         }
                     }
@@ -238,7 +236,7 @@ fun ContactsScreen(
                             fontSize = 15.sp,
                             fontWeight = FontWeight.SemiBold,
                             color = IOS.Gray,
-                            modifier = Modifier.padding(start = 20.dp, top = 14.dp, bottom = 4.dp)
+                            modifier = Modifier.padding(start = 16.dp, top = 14.dp, bottom = 4.dp)
                         )
                         HorizontalDivider(
                             modifier = Modifier.padding(start = 16.dp),
@@ -253,7 +251,7 @@ fun ContactsScreen(
                             contact.name,
                             Modifier
                                 .fillMaxWidth()
-                                .padding(start = 20.dp, end = 36.dp, top = 13.dp, bottom = 13.dp)
+                                .padding(start = 16.dp, end = 36.dp, top = 12.dp, bottom = 12.dp)
                         )
                         HorizontalDivider(
                             modifier = Modifier.padding(start = 16.dp),
@@ -298,7 +296,7 @@ private fun ContactName(name: String, modifier: Modifier) {
     }
     Text(
         text = text,
-        fontSize = 16.sp,
+        fontSize = 17.sp,
         color = MaterialTheme.colorScheme.onBackground,
         maxLines = 1,
         modifier = modifier
@@ -330,7 +328,7 @@ private fun AlphabetIndex(modifier: Modifier, onSelect: (String) -> Unit) {
     ) {
         // Her harf sabit yükseklikte: tüm harfler (V Y Z # dahil) her zaman ekrana sığar.
         ALPHABET.forEach {
-            Box(Modifier.height(16.dp), contentAlignment = Alignment.Center) {
+            Box(Modifier.height(14.dp), contentAlignment = Alignment.Center) {
                 Text(it, fontSize = 10.5.sp, fontWeight = FontWeight.SemiBold, color = IOS.Blue)
             }
         }

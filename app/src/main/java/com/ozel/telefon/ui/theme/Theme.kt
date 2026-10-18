@@ -22,18 +22,32 @@ object IOS {
     val Gray = Color(0xFF8E8E93)
 }
 
-/** Inter fontunu app/src/main/assets/fonts/ klasöründeki static dosyalardan yükler. */
-fun loadInter(context: Context): FontFamily? {
+/**
+ * Yazı tipi ailesini app/src/main/assets/fonts/ klasöründeki dosyalardan yükler.
+ * Önce San Francisco Pro (iOS yazı tipi), bulunamazsa Inter, o da yoksa sistem fontu.
+ */
+fun loadAppFont(context: Context): FontFamily? {
+    val sf = listOf(
+        "SF-Pro-Text-Light.otf" to FontWeight.Light,
+        "SF-Pro-Text-Regular.otf" to FontWeight.Normal,
+        "SF-Pro-Text-Medium.otf" to FontWeight.Medium,
+        "SF-Pro-Text-Semibold.otf" to FontWeight.SemiBold,
+        "SF-Pro-Text-Bold.otf" to FontWeight.Bold
+    )
+    val inter = listOf(
+        "Inter_24pt-Light.ttf" to FontWeight.Light,
+        "Inter_24pt-Regular.ttf" to FontWeight.Normal,
+        "Inter_24pt-Medium.ttf" to FontWeight.Medium,
+        "Inter_24pt-SemiBold.ttf" to FontWeight.SemiBold,
+        "Inter_24pt-Bold.ttf" to FontWeight.Bold
+    )
+    return loadFamily(context, sf) ?: loadFamily(context, inter)
+}
+
+private fun loadFamily(context: Context, defs: List<Pair<String, FontWeight>>): FontFamily? {
     return try {
         val am = context.assets
         val files = am.list("fonts")?.toSet() ?: return null
-        val defs = listOf(
-            "Inter_24pt-Light.ttf" to FontWeight.Light,
-            "Inter_24pt-Regular.ttf" to FontWeight.Normal,
-            "Inter_24pt-Medium.ttf" to FontWeight.Medium,
-            "Inter_24pt-SemiBold.ttf" to FontWeight.SemiBold,
-            "Inter_24pt-Bold.ttf" to FontWeight.Bold
-        )
         val fonts = defs.filter { it.first in files }
             .map { (name, w) -> Font(assetManager = am, path = "fonts/$name", weight = w) }
         if (fonts.isEmpty()) null else FontFamily(fonts)
@@ -66,7 +80,7 @@ fun OzelTelefonTheme(
     content: @Composable () -> Unit
 ) {
     val context = LocalContext.current
-    val family = remember { loadInter(context) ?: FontFamily.Default }
+    val family = remember { loadAppFont(context) ?: FontFamily.Default }
 
     val scheme = if (dark) {
         darkColorScheme(

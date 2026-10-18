@@ -22,11 +22,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ChevronRight
-import androidx.compose.material.icons.outlined.Call
-import androidx.compose.material.icons.outlined.ChatBubbleOutline
-import androidx.compose.material.icons.outlined.Videocam
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -137,11 +132,11 @@ fun RecentContextMenu(
                             .clip(RoundedCornerShape(14.dp))
                             .background(MaterialTheme.colorScheme.surfaceVariant)
                     ) {
-                        MenuItem("Mesaj Gönder", Icons.Outlined.ChatBubbleOutline) { onMessage(t.number) }
+                        MenuItem("Mesaj Gönder", F7.BubbleLeft) { onMessage(t.number) }
                         HorizontalDivider(thickness = 0.5.dp, color = MaterialTheme.colorScheme.background.copy(alpha = 0.6f))
-                        MenuItem("Ara", Icons.Outlined.Call) { onCall(t.number) }
+                        MenuItem("Ara", F7.Phone) { onCall(t.number) }
                         HorizontalDivider(thickness = 0.5.dp, color = MaterialTheme.colorScheme.background.copy(alpha = 0.6f))
-                        MenuItem("Görüntülü", Icons.Outlined.Videocam) { onVideo() }
+                        MenuItem("Görüntülü", F7.Videocam) { onVideo() }
                     }
                 }
             }
@@ -159,7 +154,7 @@ private fun MenuItem(label: String, icon: ImageVector, onClick: () -> Unit) {
             .padding(horizontal = 12.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Icon(Icons.Filled.ChevronRight, null, tint = IOS.Gray, modifier = Modifier.size(16.dp))
+        Icon(F7.ChevronRight, null, tint = IOS.Gray, modifier = Modifier.size(16.dp))
         Spacer(Modifier.width(6.dp))
         Text(label, fontSize = 15.sp, color = MaterialTheme.colorScheme.onBackground, modifier = Modifier.weight(1f))
         Icon(icon, null, tint = MaterialTheme.colorScheme.onBackground, modifier = Modifier.size(20.dp))

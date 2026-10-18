@@ -75,7 +75,7 @@ fun FavoritesScreen(hasPermission: Boolean, onCall: (String) -> Unit) {
                 Text(
                     "Rehberde yıldızladığın kişiler burada görünür.",
                     color = IOS.Gray,
-                    modifier = Modifier.padding(20.dp)
+                    modifier = Modifier.padding(16.dp)
                 )
             }
         }
@@ -85,22 +85,22 @@ fun FavoritesScreen(hasPermission: Boolean, onCall: (String) -> Unit) {
                     verticalAlignment = Alignment.CenterVertically,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 20.dp, vertical = 10.dp)
+                        .padding(horizontal = 16.dp, vertical = 9.dp)
                 ) {
-                    ContactAvatar(fav.number, fav.name, 42.dp, 17.sp)
-                    Spacer(Modifier.width(14.dp))
+                    ContactAvatar(fav.number, fav.name, 40.dp, 17.sp)
+                    Spacer(Modifier.width(12.dp))
                     Column {
                         Text(
                             fav.name,
                             fontSize = 16.sp,
-                            fontWeight = FontWeight.Medium,
+                            fontWeight = FontWeight.SemiBold,
                             color = MaterialTheme.colorScheme.onBackground
                         )
                         Text(fav.label, fontSize = 13.sp, color = IOS.Gray)
                     }
                 }
                 HorizontalDivider(
-                    modifier = Modifier.padding(start = 76.dp),
+                    modifier = Modifier.padding(start = 68.dp),
                     thickness = 0.5.dp,
                     color = MaterialTheme.colorScheme.surfaceVariant
                 )

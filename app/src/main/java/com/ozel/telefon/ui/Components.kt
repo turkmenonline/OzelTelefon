@@ -20,10 +20,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Cancel
-import androidx.compose.material.icons.filled.Person
-import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -61,7 +57,7 @@ fun LargeTitle(text: String) {
         fontSize = 34.sp,
         fontWeight = FontWeight.Bold,
         color = MaterialTheme.colorScheme.onBackground,
-        modifier = Modifier.padding(start = 20.dp, end = 20.dp, top = 4.dp, bottom = 8.dp)
+        modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 2.dp, bottom = 6.dp)
     )
 }
 
@@ -84,7 +80,7 @@ fun SearchField(
         cursorBrush = SolidColor(IOS.Blue),
         modifier = modifier
             .fillMaxWidth()
-            .height(38.dp)
+            .height(36.dp)
             .clip(RoundedCornerShape(10.dp))
             .background(MaterialTheme.colorScheme.surfaceVariant),
         decorationBox = { inner ->
@@ -94,7 +90,7 @@ fun SearchField(
                     .padding(horizontal = 8.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Icon(Icons.Filled.Search, null, tint = IOS.Gray, modifier = Modifier.size(20.dp))
+                Icon(F7.Search, null, tint = IOS.Gray, modifier = Modifier.size(20.dp))
                 Spacer(Modifier.width(6.dp))
                 Box(Modifier.weight(1f), contentAlignment = Alignment.CenterStart) {
                     if (value.isEmpty()) {
@@ -104,13 +100,15 @@ fun SearchField(
                 }
                 if (value.isNotEmpty()) {
                     Icon(
-                        Icons.Filled.Cancel,
+                        F7.XmarkCircleFill,
                         contentDescription = "Temizle",
                         tint = IOS.Gray,
                         modifier = Modifier
                             .size(20.dp)
                             .clickable { onValueChange("") }
                     )
+                } else {
+                    Icon(F7.MicFill, null, tint = IOS.Gray, modifier = Modifier.size(20.dp))
                 }
             }
         }
@@ -130,8 +128,8 @@ fun Segmented(options: List<String>, selected: Int, onSelect: (Int) -> Unit) {
             val active = i == selected
             Box(
                 modifier = Modifier
-                    .width(96.dp)
-                    .height(30.dp)
+                    .width(76.dp)
+                    .height(28.dp)
                     .clip(RoundedCornerShape(7.dp))
                     .background(if (active) MaterialTheme.colorScheme.background else Color.Transparent)
                     .clickable { onSelect(i) },
@@ -171,7 +169,7 @@ fun InitialsAvatar(name: String?, size: Dp, fontSize: TextUnit) {
         if (initials != null) {
             Text(initials, color = Color.White, fontSize = fontSize, fontWeight = FontWeight.Medium)
         } else {
-            Icon(Icons.Filled.Person, null, tint = Color.White, modifier = Modifier.size(size * 0.6f))
+            Icon(F7.PersonFill, null, tint = Color.White, modifier = Modifier.size(size * 0.6f))
         }
     }
 }
