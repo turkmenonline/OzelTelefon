@@ -9,6 +9,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -24,6 +25,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ChevronLeft
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -151,8 +153,19 @@ fun ContactsScreen(
                         modifier = Modifier
                             .fillMaxWidth()
                             .padding(horizontal = 16.dp, vertical = 8.dp),
-                        horizontalArrangement = Arrangement.End
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
+                        // iOS'taki "‹ Listeler" (liste/grup özelliği yok; görünüm için)
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                Icons.Filled.ChevronLeft,
+                                contentDescription = null,
+                                tint = IOS.Blue,
+                                modifier = Modifier.size(26.dp)
+                            )
+                            Text("Listeler", color = IOS.Blue, fontSize = 17.sp)
+                        }
                         Icon(
                             Icons.Filled.Add,
                             contentDescription = "Kişi ekle",
@@ -254,7 +267,7 @@ fun ContactsScreen(
 
         if (grouped.isNotEmpty()) {
             AlphabetIndex(
-                modifier = Modifier.align(Alignment.CenterEnd),
+                modifier = Modifier.align(Alignment.TopEnd).padding(top = 112.dp),
                 onSelect = { letter ->
                     val from = ALPHABET.indexOf(letter)
                     val target = ALPHABET.drop(from).firstOrNull { it in starts }
@@ -305,7 +318,6 @@ private fun AlphabetIndex(modifier: Modifier, onSelect: (String) -> Unit) {
     Column(
         modifier = modifier
             .width(22.dp)
-            .fillMaxHeight(0.78f)
             .onSizeChanged { heightPx = it.height.coerceAtLeast(1) }
             .pointerInput(Unit) { detectTapGestures { pick(it.y) } }
             .pointerInput(Unit) {
@@ -314,11 +326,13 @@ private fun AlphabetIndex(modifier: Modifier, onSelect: (String) -> Unit) {
                     onVerticalDrag = { change, _ -> pick(change.position.y) }
                 )
             },
-        verticalArrangement = Arrangement.SpaceEvenly,
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
+        // Her harf sabit yükseklikte: tüm harfler (V Y Z # dahil) her zaman ekrana sığar.
         ALPHABET.forEach {
-            Text(it, fontSize = 10.5.sp, fontWeight = FontWeight.SemiBold, color = IOS.Blue)
+            Box(Modifier.height(16.dp), contentAlignment = Alignment.Center) {
+                Text(it, fontSize = 10.5.sp, fontWeight = FontWeight.SemiBold, color = IOS.Blue)
+            }
         }
     }
 }

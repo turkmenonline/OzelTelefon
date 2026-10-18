@@ -1,6 +1,11 @@
 package com.ozel.telefon.ui
 
 import androidx.compose.foundation.Image
+import androidx.compose.ui.composed
+import androidx.compose.foundation.interaction.collectIsPressedAsState
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
@@ -196,4 +201,28 @@ fun ContactAvatar(number: String, name: String?, size: Dp, fontSize: TextUnit = 
     } else {
         InitialsAvatar(name, size, fontSize)
     }
+}
+
+/**
+ * iOS tarzı dokunma: dalga (ripple) yok, basılı tutulan satır gri vurgulanır.
+ * onLongClick verilirse uzun basma da algılanır.
+ */
+@OptIn(ExperimentalFoundationApi::class)
+fun Modifier.iosClickable(
+    enabled: Boolean = true,
+    onLongClick: (() -> Unit)? = null,
+    onClick: () -> Unit
+): Modifier = composed {
+    val source = remember { MutableInteractionSource() }
+    val pressed by source.collectIsPressedAsState()
+    val highlight = MaterialTheme.colorScheme.surfaceVariant
+    this
+        .background(if (pressed && enabled) highlight else Color.Transparent)
+        .combinedClickable(
+            interactionSource = source,
+            indication = null,
+            enabled = enabled,
+            onLongClick = onLongClick,
+            onClick = onClick
+        )
 }

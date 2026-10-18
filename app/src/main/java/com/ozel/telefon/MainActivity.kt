@@ -15,6 +15,20 @@ import android.provider.ContactsContract
 import android.provider.Settings
 import android.telecom.TelecomManager
 import android.widget.Toast
+import com.ozel.telefon.ui.RecentContextMenu
+import com.ozel.telefon.ui.DetailBundle
+import com.ozel.telefon.ui.MenuTarget
+import com.ozel.telefon.ui.loadDetailBundle
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.draw.blur
+import androidx.compose.runtime.key
+import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.CubicBezierEasing
+import androidx.compose.animation.core.Animatable
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
@@ -69,6 +83,8 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import kotlinx.coroutines.launch
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
@@ -249,6 +265,32 @@ fun AppRoot(initialNumber: String) {
     val call: (String) -> Unit = remember(context) { { n: String -> placeCall(context, n) } }
     var detail by remember { mutableStateOf<DetailTarget?>(null) }
 
+    // iOS "push" geçişi: kart sağdan kayar, alttaki ekran hafifçe sola çekilip kararır.
+    var shownDetail by remember { mutableStateOf<DetailTarget?>(null) }
+    var preloaded by remember { mutableStateOf<DetailBundle?>(null) }
+    val pushProgress = remember { Animatable(0f) }
+    LaunchedEffect(detail) {
+        val d = detail
+        if (d != null) {
+            // Kart içeriği önce hazırlanır, sonra kayar: kayarken içerik zıplamaz.
+            preloaded = if (d.number.isBlank()) null else loadDetailBundle(context, d.number)
+            shownDetail = d
+            pushProgress.animateTo(1f, tween(360, easing = CubicBezierEasing(0.22f, 0.61f, 0.36f, 1f)))
+        } else if (shownDetail != null) {
+            pushProgress.animateTo(0f, tween(300, easing = CubicBezierEasing(0.22f, 0.61f, 0.36f, 1f)))
+            shownDetail = null
+        }
+    }
+
+    // Uzun basma menüsü: arka plan bulanıklaşır.
+    var menuTarget by remember { mutableStateOf<MenuTarget?>(null) }
+    val blurRadius by animateDpAsState(
+        targetValue = if (menuTarget != null) 22.dp else 0.dp,
+        animationSpec = tween(220),
+        label = "blur"
+    )
+    val tabBarHeight = 52.dp + 0.5.dp + WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
+
     // Listeler bir kez önden yüklenir; uygulama öne gelince arka planda tazelenir.
     LaunchedEffect(hasPerms, resume) {
         if (hasPerms) ListData.refresh(context)
@@ -301,8 +343,10 @@ fun AppRoot(initialNumber: String) {
     // Kaydırma konumu sekme değişince kaybolmasın.
     val recentsState = rememberLazyListState()
     val contactsState = rememberLazyListState()
+    val tabScope = rememberCoroutineScope()
 
     Box(Modifier.fillMaxSize()) {
+    Box(Modifier.fillMaxSize().blur(blurRadius)) {
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
         bottomBar = {
@@ -325,7 +369,16 @@ fun AppRoot(initialNumber: String) {
                                 .clickable(
                                     interactionSource = remember { MutableInteractionSource() },
                                     indication = null
-                                ) { tab = i }
+                                ) {
+                                    if (tab == i && detail == null) {
+                                        when (i) {
+                                            1 -> tabScope.launch { recentsState.animateScrollToItem(0) }
+                                            2 -> tabScope.launch { contactsState.animateScrollToItem(0) }
+                                        }
+                                    }
+                                    tab = i
+                                    detail = null
+                                }
                                 .padding(top = 6.dp),
                             horizontalAlignment = Alignment.CenterHorizontally,
                             verticalArrangement = Arrangement.Top
@@ -351,6 +404,7 @@ fun AppRoot(initialNumber: String) {
             Modifier
                 .fillMaxSize()
                 .padding(padding)
+                .graphicsLayer { translationX = -pushProgress.value * size.width * 0.3f }
         ) {
             if (!isDefault) {
                 Column(
@@ -383,7 +437,13 @@ fun AppRoot(initialNumber: String) {
             }
             when (tab) {
                 0 -> FavoritesScreen(hasPerms, call)
-                1 -> RecentsScreen(hasPerms, recentsState, call) { detail = DetailTarget(it) }
+                1 -> RecentsScreen(
+                    hasPerms,
+                    recentsState,
+                    call,
+                    onInfo = { detail = DetailTarget(it) },
+                    onMenu = { menuTarget = it }
+                )
                 2 -> ContactsScreen(
                     hasPerms,
                     contactsState,
@@ -396,16 +456,52 @@ fun AppRoot(initialNumber: String) {
             }
         }
     }
-    detail?.let { d ->
-        ContactDetailScreen(
-            target = d,
-            onClose = { detail = null },
-            onCall = { n ->
-                detail = null
-                call(n)
-            }
+    val shown = shownDetail
+    if (shown != null) {
+        // alttaki ekranın kararması
+        Box(
+            Modifier
+                .fillMaxSize()
+                .padding(bottom = tabBarHeight)
+                .graphicsLayer { alpha = pushProgress.value * 0.2f }
+                .background(Color.Black)
         )
+        key(shown) {
+            Box(
+                Modifier
+                    .fillMaxSize()
+                    .graphicsLayer { translationX = (1f - pushProgress.value) * size.width }
+            ) {
+                ContactDetailScreen(
+                    target = shown,
+                    tabBarHeight = tabBarHeight,
+                    initial = preloaded,
+                    onClose = { detail = null },
+                    onCall = { n ->
+                        detail = null
+                        call(n)
+                    }
+                )
+            }
+        }
     }
+    }
+
+    RecentContextMenu(
+        target = menuTarget,
+        onDismiss = { menuTarget = null },
+        onMessage = { n ->
+            menuTarget = null
+            sendSms(context, n)
+        },
+        onCall = { n ->
+            menuTarget = null
+            call(n)
+        },
+        onVideo = {
+            menuTarget = null
+            Toast.makeText(context, "Görüntülü arama bu uygulamada yok", Toast.LENGTH_SHORT).show()
+        }
+    )
     }
 }
-
