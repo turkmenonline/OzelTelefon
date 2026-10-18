@@ -68,7 +68,7 @@ fun GlassTabBar(
     onSearch: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val glass = glassSurfaceColor()
+    val glass = glassTint()
     val border = glassBorderColor()
     val shadowColor = Color(0x26000000)
     val highlight = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.08f)
@@ -96,6 +96,7 @@ fun GlassTabBar(
                 .height(62.dp)
                 .shadow(10.dp, CircleShape, ambientColor = shadowColor, spotColor = shadowColor)
                 .clip(CircleShape)
+                .glassBackdrop()
                 .background(glass)
                 .border(BorderStroke(0.5.dp, border), CircleShape)
                 .padding(4.dp)
@@ -151,6 +152,7 @@ fun GlassTabBar(
                 .size(62.dp)
                 .shadow(10.dp, CircleShape, ambientColor = shadowColor, spotColor = shadowColor)
                 .clip(CircleShape)
+                .glassBackdrop()
                 .background(glass)
                 .background(searchFill)
                 .border(BorderStroke(0.5.dp, border), CircleShape)

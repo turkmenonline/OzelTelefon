@@ -70,7 +70,7 @@ fun DialerScreen(initialNumber: String, onCall: (String) -> Unit) {
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .padding(start = 24.dp, end = 24.dp, bottom = 8.dp),
+            .padding(start = 24.dp, end = 24.dp, bottom = 8.dp + LocalBottomBarInset.current),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         // Üst bölge: numara ve kişi önerisi (iOS 26'da numara ekranın üstünde durur).

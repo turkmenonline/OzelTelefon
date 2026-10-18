@@ -144,7 +144,7 @@ fun ContactsScreen(
     val dividerColor = MaterialTheme.colorScheme.surfaceVariant
 
     Box(Modifier.fillMaxSize()) {
-        LazyColumn(state = listState, contentPadding = PaddingValues(bottom = 16.dp)) {
+        LazyColumn(state = listState, contentPadding = PaddingValues(bottom = 16.dp + LocalBottomBarInset.current)) {
             item(key = "header", contentType = "header") {
                 Column {
                     Row(

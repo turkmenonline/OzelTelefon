@@ -1,5 +1,11 @@
 package com.ozel.telefon
 
+import com.ozel.telefon.ui.LocalBottomBarInset
+import com.ozel.telefon.ui.LocalBackdrop
+import androidx.compose.ui.graphics.rememberGraphicsLayer
+import androidx.compose.ui.graphics.layer.drawLayer
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.animation.Crossfade
 import com.ozel.telefon.ui.F7
 
@@ -279,12 +285,14 @@ fun AppRoot(initialNumber: String) {
     val recentsState = rememberLazyListState()
     val contactsState = rememberLazyListState()
     val tabScope = rememberCoroutineScope()
+    val backdropLayer = rememberGraphicsLayer()
 
     Box(Modifier.fillMaxSize()) {
     Box(Modifier.fillMaxSize().blur(blurRadius)) {
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
         bottomBar = {
+          CompositionLocalProvider(LocalBackdrop provides backdropLayer) {
             GlassTabBar(
                 labels = tabLabels,
                 icons = tabIcons,
@@ -305,12 +313,26 @@ fun AppRoot(initialNumber: String) {
                 },
                 modifier = Modifier.navigationBarsPadding()
             )
+          }
         }
     ) { padding ->
+      // İçerik alt çubuğun ALTINDAN da geçer (liste çubuğun arkasında kayar); arkası bulanık görünür.
+      CompositionLocalProvider(
+          LocalBackdrop provides backdropLayer,
+          LocalBottomBarInset provides padding.calculateBottomPadding()
+      ) {
+      Box(
+          Modifier
+              .fillMaxSize()
+              .drawWithContent {
+                  backdropLayer.record { this@drawWithContent.drawContent() }
+                  drawLayer(backdropLayer)
+              }
+      ) {
         Column(
             Modifier
                 .fillMaxSize()
-                .padding(padding)
+                .padding(top = padding.calculateTopPadding())
                 .graphicsLayer { translationX = -pushProgress.value * size.width * 0.3f }
         ) {
             if (!isDefault) {
@@ -363,6 +385,8 @@ fun AppRoot(initialNumber: String) {
                 }
             }
         }
+      }
+      }
     }
     val shown = shownDetail
     if (shown != null) {

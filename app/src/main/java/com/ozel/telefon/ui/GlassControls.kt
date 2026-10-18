@@ -1,5 +1,20 @@
 package com.ozel.telefon.ui
 
+import androidx.compose.ui.layout.positionInRoot
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.graphics.rememberGraphicsLayer
+import androidx.compose.ui.graphics.layer.drawLayer
+import androidx.compose.ui.graphics.layer.GraphicsLayer
+import androidx.compose.ui.graphics.drawscope.translate
+import androidx.compose.ui.graphics.TileMode
+import androidx.compose.ui.graphics.BlurEffect
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.composed
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.compositionLocalOf
+import androidx.compose.foundation.isSystemInDarkTheme
+import android.os.Build
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.runtime.getValue
@@ -73,8 +88,52 @@ fun PopupAppear(origin: TransformOrigin, content: @Composable () -> Unit) {
             scaleY = sc
             alpha = (a.value * 1.6f).coerceIn(0f, 1f)
             transformOrigin = origin
+            // iOS 26: menü bulanık başlayıp netleşir (Android 12+; altında etkisiz).
+            val r = (1f - a.value).coerceIn(0f, 1f) * 18f
+            renderEffect = if (r > 0.5f && Build.VERSION.SDK_INT >= 31) BlurEffect(r, r, TileMode.Decal) else null
         }
     ) { content() }
+}
+
+/** Alt çubuk gibi yüzeylerin arkasını bulanıklaştırmak için içeriğin kaydedildiği katman. */
+val LocalBackdrop = compositionLocalOf<GraphicsLayer?> { null }
+
+/** Alt çubuk yüksekliği: listeler son satırı çubuğun üstüne çıkarabilsin diye alta boşluk bırakır. */
+val LocalBottomBarInset = compositionLocalOf { 0.dp }
+
+/** Bulanıklık gerçekten çalışıyor mu (Android 12+ ve katman var)? */
+@Composable
+fun backdropActive(): Boolean = LocalBackdrop.current != null && Build.VERSION.SDK_INT >= 31
+
+/**
+ * Liquid Glass: yüzeyin arkasından geçen içeriği bulanıklaştırıp (cam gibi) gösterir.
+ * Şekil kırpması bu modifier'dan ÖNCE uygulanmalı. Altındaki renk tonu için ayrıca .background() gerekir.
+ */
+fun Modifier.glassBackdrop(blur: Float = 26f): Modifier = composed {
+    val source = LocalBackdrop.current
+    if (source == null || Build.VERSION.SDK_INT < 31) this
+    else {
+        val blurLayer = rememberGraphicsLayer()
+        var pos by remember { mutableStateOf(Offset.Zero) }
+        this
+            .onGloballyPositioned { pos = it.positionInRoot() }
+            .drawBehind {
+                blurLayer.renderEffect = BlurEffect(blur, blur, TileMode.Clamp)
+                blurLayer.record {
+                    translate(-pos.x, -pos.y) { drawLayer(source) }
+                }
+                drawLayer(blurLayer)
+            }
+    }
+}
+
+/** Bulanıklık varken cam tonu daha saydam olmalı ki arkadaki içerik seçilsin. */
+@Composable
+fun glassTint(): Color {
+    val dark = isSystemInDarkTheme()
+    return if (backdropActive()) {
+        if (dark) Color(0x8C1C1C1E) else Color(0x99FFFFFF)
+    } else glassSurfaceColor()
 }
 
 /** iOS 26 üst çubuktaki yuvarlak cam düğme (filtre, geri, + gibi). */

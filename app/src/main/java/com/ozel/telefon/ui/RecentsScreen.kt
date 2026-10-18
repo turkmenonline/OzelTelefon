@@ -271,7 +271,7 @@ fun RecentsScreen(
 
     val dividerColor = MaterialTheme.colorScheme.surfaceVariant
 
-    LazyColumn(state = listState, contentPadding = PaddingValues(bottom = 16.dp)) {
+    LazyColumn(state = listState, contentPadding = PaddingValues(bottom = 16.dp + LocalBottomBarInset.current)) {
         item(key = "header", contentType = "header") {
             Box(
                 modifier = Modifier
