@@ -55,8 +55,7 @@
             android:name=".call.InCallActivity"
             android:exported="false"
             android:theme="@style/Theme.OzelTelefon.InCall"
-            android:launchMode="singleInstance"
-            android:excludeFromRecents="true"
+            android:launchMode="singleTop"
             android:showWhenLocked="true"
             android:turnScreenOn="true" />
 

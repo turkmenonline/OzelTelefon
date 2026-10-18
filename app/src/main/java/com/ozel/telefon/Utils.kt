@@ -74,7 +74,7 @@ data class ContactInfo(
 
 private val infoCache = ConcurrentHashMap<String, ContactInfo>()
 private val missCache = ConcurrentHashMap.newKeySet<String>()
-private val photoCache = LruCache<String, ImageBitmap>(80)
+private val photoCache = LruCache<String, ImageBitmap>(200)
 
 /** Numaradan rehberdeki kişiyi (isim, foto, tür) bulur. İzin yoksa / bulunamazsa null. */
 fun lookupContact(context: Context, number: String): ContactInfo? {
@@ -121,6 +121,27 @@ fun clearContactCaches() {
     infoCache.clear()
     missCache.clear()
     photoCache.evictAll()
+}
+
+/** Önbellekteki kişi bilgisi (disk/IPC yok); yoksa null. */
+fun peekContact(number: String): ContactInfo? = infoCache[number]
+
+/** Bu numara daha önce sorgulandı mı (bulundu ya da bulunamadı)? */
+fun contactCached(number: String): Boolean =
+    infoCache.containsKey(number) || missCache.contains(number)
+
+/** Liste avatarı için önbellekteki fotoğraf (decode yok); yoksa null. */
+fun peekPhoto(number: String, maxSize: Int): ImageBitmap? {
+    val info = infoCache[number] ?: return null
+    val uri = info.thumbUri ?: info.photoUri ?: return null
+    return photoCache.get("$uri@$maxSize")
+}
+
+/** Bu numaranın listede gösterilecek fotoğrafı olabilir mi? Bilinen "yok" ise false. */
+fun photoPossible(number: String): Boolean {
+    if (missCache.contains(number)) return false
+    val info = infoCache[number] ?: return true
+    return info.thumbUri != null || info.photoUri != null
 }
 
 fun lookupName(context: Context, number: String): String? = lookupContact(context, number)?.name

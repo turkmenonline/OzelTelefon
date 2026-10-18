@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CallMade
@@ -24,7 +25,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -34,16 +34,18 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.ozel.telefon.ContactInfo
+import com.ozel.telefon.contactCached
 import com.ozel.telefon.formatNumber
 import com.ozel.telefon.lookupContact
 import com.ozel.telefon.openContactCard
+import com.ozel.telefon.peekContact
 import com.ozel.telefon.phoneTypeLabel
-import com.ozel.telefon.rememberResumeCount
 import com.ozel.telefon.ui.theme.IOS
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -63,9 +65,9 @@ data class RecentCall(
         get() = type == CallLog.Calls.MISSED_TYPE || type == CallLog.Calls.REJECTED_TYPE
 }
 
-data class RecentGroup(val first: RecentCall, val count: Int)
+data class RecentGroup(val first: RecentCall, val count: Int, val key: String)
 
-private fun loadRecents(context: Context): List<RecentCall> {
+internal fun loadRecents(context: Context): List<RecentCall> {
     val list = mutableListOf<RecentCall>()
     try {
         context.contentResolver.query(
@@ -103,18 +105,21 @@ private fun loadRecents(context: Context): List<RecentCall> {
 /** Art arda gelen aynı kişiyle aynı türdeki aramaları "Ad (2)" gibi birleştirir. */
 private fun group(calls: List<RecentCall>): List<RecentGroup> {
     val out = mutableListOf<RecentGroup>()
+    val seen = HashSet<String>()
     for (c in calls) {
         val last = out.lastOrNull()
         if (last != null && last.first.number == c.number && last.first.missed == c.missed) {
             out[out.lastIndex] = last.copy(count = last.count + 1)
         } else {
-            out.add(RecentGroup(c, 1))
+            var k = "${c.date}|${c.number}"
+            while (!seen.add(k)) k += "_"
+            out.add(RecentGroup(c, 1, k))
         }
     }
     return out
 }
 
-private fun midnight(millis: Long): Long {
+internal fun midnight(millis: Long): Long {
     val c = Calendar.getInstance().apply {
         timeInMillis = millis
         set(Calendar.HOUR_OF_DAY, 0)
@@ -125,28 +130,36 @@ private fun midnight(millis: Long): Long {
     return c.timeInMillis
 }
 
-private fun formatDate(millis: Long): String {
-    val days = ((midnight(System.currentTimeMillis()) - midnight(millis)) / 86_400_000L).toInt()
-    val tr = Locale("tr", "TR")
+private val TRL = Locale("tr", "TR")
+
+// SimpleDateFormat pahalı; bir kez kurulur. Sadece ana iş parçacığında (composition) kullanılır.
+private val timeFmt by lazy { SimpleDateFormat("HH:mm", TRL) }
+private val dayFmt by lazy { SimpleDateFormat("EEEE", TRL) }
+private val dateFmt by lazy { SimpleDateFormat("dd.MM.yy", TRL) }
+
+private fun formatDate(millis: Long, today: Long): String {
+    val days = ((today - midnight(millis)) / 86_400_000L).toInt()
     return when {
-        days <= 0 -> SimpleDateFormat("HH:mm", tr).format(Date(millis))
+        days <= 0 -> timeFmt.format(Date(millis))
         days == 1 -> "Dün"
-        days < 7 -> SimpleDateFormat("EEEE", tr).format(Date(millis))
-        else -> SimpleDateFormat("dd.MM.yy", tr).format(Date(millis))
+        days < 7 -> dayFmt.format(Date(millis))
+        else -> dateFmt.format(Date(millis))
     }
 }
 
 @Composable
-fun RecentsScreen(hasPermission: Boolean, onCall: (String) -> Unit, onInfo: (String) -> Unit) {
-    val context = LocalContext.current
-    var items by remember { mutableStateOf<List<RecentCall>>(emptyList()) }
+fun RecentsScreen(
+    hasPermission: Boolean,
+    listState: LazyListState,
+    onCall: (String) -> Unit,
+    onInfo: (String) -> Unit
+) {
     var filter by remember { mutableIntStateOf(0) }
     var query by remember { mutableStateOf("") }
-    val resume = rememberResumeCount()
 
-    LaunchedEffect(hasPermission, resume) {
-        if (hasPermission) items = withContext(Dispatchers.IO) { loadRecents(context) }
-    }
+    // Veri ListData'da tutulur; sekme değişince diskten yeniden okunmaz.
+    val items = ListData.recents
+    val today = ListData.today
 
     val groups = remember(items, filter, query) {
         val base = if (filter == 1) items.filter { it.missed } else items
@@ -158,8 +171,8 @@ fun RecentsScreen(hasPermission: Boolean, onCall: (String) -> Unit, onInfo: (Str
 
     val dividerColor = MaterialTheme.colorScheme.surfaceVariant
 
-    LazyColumn(contentPadding = PaddingValues(bottom = 16.dp)) {
-        item {
+    LazyColumn(state = listState, contentPadding = PaddingValues(bottom = 16.dp)) {
+        item(key = "header", contentType = "header") {
             Column {
                 Box(
                     modifier = Modifier
@@ -172,7 +185,7 @@ fun RecentsScreen(hasPermission: Boolean, onCall: (String) -> Unit, onInfo: (Str
                 LargeTitle("Son Aramalar")
             }
         }
-        item {
+        item(key = "search", contentType = "search") {
             SearchField(
                 value = query,
                 onValueChange = { query = it },
@@ -181,7 +194,7 @@ fun RecentsScreen(hasPermission: Boolean, onCall: (String) -> Unit, onInfo: (Str
             )
         }
         if (!hasPermission) {
-            item {
+            item(key = "noperm") {
                 Text(
                     "Arama geçmişini görmek için izin gerekli.",
                     color = IOS.Gray,
@@ -189,10 +202,10 @@ fun RecentsScreen(hasPermission: Boolean, onCall: (String) -> Unit, onInfo: (Str
                 )
             }
         } else if (groups.isEmpty()) {
-            item { Text("Arama yok.", color = IOS.Gray, modifier = Modifier.padding(20.dp)) }
+            item(key = "empty") { Text("Arama yok.", color = IOS.Gray, modifier = Modifier.padding(20.dp)) }
         }
-        items(groups) { g ->
-            RecentRow(g, dividerColor, onCall, onInfo)
+        items(groups, key = { it.key }, contentType = { "recent" }) { g ->
+            RecentRow(g, today, dividerColor, onCall, onInfo)
         }
     }
 }
@@ -200,23 +213,34 @@ fun RecentsScreen(hasPermission: Boolean, onCall: (String) -> Unit, onInfo: (Str
 @Composable
 private fun RecentRow(
     group: RecentGroup,
-    dividerColor: androidx.compose.ui.graphics.Color,
+    today: Long,
+    dividerColor: Color,
     onCall: (String) -> Unit,
     onInfo: (String) -> Unit
 ) {
     val context = LocalContext.current
     val call = group.first
-    val info by produceState<ContactInfo?>(null, call.number) {
-        value = withContext(Dispatchers.IO) { lookupContact(context, call.number) }
+    val number = call.number
+    val version = ListData.version
+
+    // Önceden çözülmüşse ilk karede hazır; IO'ya hiç gitmez.
+    val cached = remember(number, version) { peekContact(number) }
+    val info by produceState<ContactInfo?>(cached, number, version) {
+        if (value == null && !contactCached(number)) {
+            value = withContext(Dispatchers.IO) { lookupContact(context, number) }
+        }
     }
     val contactName = info?.name ?: call.cachedName
-    val title = (contactName ?: formatNumber(call.number).ifBlank { "Bilinmeyen" }) +
-        if (group.count > 1) " (${group.count})" else ""
+    val title = remember(contactName, number, group.count) {
+        (contactName ?: formatNumber(number).ifBlank { "Bilinmeyen" }) +
+            if (group.count > 1) " (${group.count})" else ""
+    }
     val subtitle = when {
         contactName == null -> "Bilinmeyen"
         else -> call.cachedLabel ?: info?.label ?: "telefon"
     }
     val outgoing = call.type == CallLog.Calls.OUTGOING_TYPE
+    val dateText = remember(call.date, today) { formatDate(call.date, today) }
 
     Column(Modifier.clickable { onCall(call.number) }) {
         Row(
@@ -249,7 +273,7 @@ private fun RecentRow(
                     Text(subtitle, fontSize = 13.sp, color = IOS.Gray, maxLines = 1)
                 }
             }
-            Text(formatDate(call.date), fontSize = 14.sp, color = IOS.Gray)
+            Text(dateText, fontSize = 14.sp, color = IOS.Gray)
             Spacer(Modifier.width(10.dp))
             Icon(
                 Icons.Outlined.Info,

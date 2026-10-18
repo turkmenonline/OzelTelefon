@@ -24,6 +24,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.produceState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -41,6 +42,8 @@ import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.ozel.telefon.loadContactPhoto
+import com.ozel.telefon.peekPhoto
+import com.ozel.telefon.photoPossible
 import com.ozel.telefon.ui.theme.IOS
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -172,8 +175,13 @@ fun InitialsAvatar(name: String?, size: Dp, fontSize: TextUnit) {
 @Composable
 fun ContactAvatar(number: String, name: String?, size: Dp, fontSize: TextUnit = 22.sp) {
     val context = LocalContext.current
-    val photo by produceState<ImageBitmap?>(null, number) {
-        value = withContext(Dispatchers.IO) { loadContactPhoto(context, number, false, 200) }
+    val version = ListData.version
+    // Önbellekte varsa ilk karede hazır gelir: harf avatarı -> foto "çakılması" ve IO işi olmaz.
+    val cached = remember(number, version) { peekPhoto(number, 200) }
+    val photo by produceState<ImageBitmap?>(cached, number, version) {
+        if (value == null && photoPossible(number)) {
+            value = withContext(Dispatchers.IO) { loadContactPhoto(context, number, false, 200) }
+        }
     }
     val p = photo
     if (p != null) {

@@ -21,8 +21,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material3.HorizontalDivider
@@ -30,12 +30,12 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -48,11 +48,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.ozel.telefon.rememberResumeCount
 import com.ozel.telefon.ui.theme.IOS
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import java.text.Collator
 import java.util.Locale
 
@@ -71,7 +68,7 @@ private fun sectionOf(name: String): String {
     return if (s in ALPHABET) s else "#"
 }
 
-private fun loadContacts(context: Context): List<ContactItem> {
+internal fun loadContacts(context: Context): List<ContactItem> {
     val list = mutableListOf<ContactItem>()
     try {
         context.contentResolver.query(
@@ -97,7 +94,7 @@ private fun loadContacts(context: Context): List<ContactItem> {
         .sortedWith { a, b -> collator.compare(a.name, b.name) }
 }
 
-private fun loadProfileName(context: Context): String? = try {
+internal fun loadProfileName(context: Context): String? = try {
     context.contentResolver.query(
         ContactsContract.Profile.CONTENT_URI,
         arrayOf(ContactsContract.Profile.DISPLAY_NAME),
@@ -111,25 +108,16 @@ private fun loadProfileName(context: Context): String? = try {
 @Composable
 fun ContactsScreen(
     hasPermission: Boolean,
+    listState: LazyListState,
     onCall: (String) -> Unit,
     onOpen: (String) -> Unit,
     onAdd: () -> Unit
 ) {
-    val context = LocalContext.current
-    var all by remember { mutableStateOf<List<ContactItem>>(emptyList()) }
-    var profile by remember { mutableStateOf<String?>(null) }
     var query by remember { mutableStateOf("") }
-    val resume = rememberResumeCount()
 
-    LaunchedEffect(hasPermission, resume) {
-        if (hasPermission) {
-            val (list, prof) = withContext(Dispatchers.IO) {
-                loadContacts(context) to loadProfileName(context)
-            }
-            all = list
-            profile = prof
-        }
-    }
+    // Veri ListData'da tutulur; sekme değişince rehber yeniden okunup sıralanmaz.
+    val all = ListData.contacts
+    val profile = ListData.profile
 
     val grouped = remember(all, query) {
         val filtered = if (query.isBlank()) all else all.filter {
@@ -152,13 +140,12 @@ fun ContactsScreen(
         map
     }
 
-    val listState = rememberLazyListState()
     val scope = rememberCoroutineScope()
     val dividerColor = MaterialTheme.colorScheme.surfaceVariant
 
     Box(Modifier.fillMaxSize()) {
         LazyColumn(state = listState, contentPadding = PaddingValues(bottom = 16.dp)) {
-            item {
+            item(key = "header", contentType = "header") {
                 Column {
                     Row(
                         modifier = Modifier
@@ -178,7 +165,7 @@ fun ContactsScreen(
                     LargeTitle("Kişiler")
                 }
             }
-            item {
+            item(key = "search", contentType = "search") {
                 SearchField(
                     value = query,
                     onValueChange = { query = it },
@@ -231,7 +218,7 @@ fun ContactsScreen(
             }
 
             for ((letter, contacts) in grouped) {
-                stickyHeader {
+                stickyHeader(key = "h_$letter", contentType = "header") {
                     Column(Modifier.background(MaterialTheme.colorScheme.background)) {
                         Text(
                             text = letter,
@@ -247,7 +234,7 @@ fun ContactsScreen(
                         )
                     }
                 }
-                items(contacts) { contact ->
+                items(contacts, key = { "${it.name}|${it.number}" }, contentType = { "contact" }) { contact ->
                     Column(Modifier.clickable { onOpen(contact.number) }) {
                         ContactName(
                             contact.name,
@@ -284,14 +271,16 @@ fun ContactsScreen(
 /** iOS gibi: soyadı (son kelime) kalın, öncesi normal. */
 @Composable
 private fun ContactName(name: String, modifier: Modifier) {
-    val trimmed = name.trim()
-    val idx = trimmed.lastIndexOf(' ')
-    val text = buildAnnotatedString {
-        if (idx > 0) {
-            append(trimmed.substring(0, idx + 1))
-            withStyle(SpanStyle(fontWeight = FontWeight.SemiBold)) { append(trimmed.substring(idx + 1)) }
-        } else {
-            withStyle(SpanStyle(fontWeight = FontWeight.SemiBold)) { append(trimmed) }
+    val text = remember(name) {
+        val trimmed = name.trim()
+        val idx = trimmed.lastIndexOf(' ')
+        buildAnnotatedString {
+            if (idx > 0) {
+                append(trimmed.substring(0, idx + 1))
+                withStyle(SpanStyle(fontWeight = FontWeight.SemiBold)) { append(trimmed.substring(idx + 1)) }
+            } else {
+                withStyle(SpanStyle(fontWeight = FontWeight.SemiBold)) { append(trimmed) }
+            }
         }
     }
     Text(
@@ -306,10 +295,11 @@ private fun ContactName(name: String, modifier: Modifier) {
 @Composable
 private fun AlphabetIndex(modifier: Modifier, onSelect: (String) -> Unit) {
     var heightPx by remember { mutableIntStateOf(1) }
+    val currentOnSelect by rememberUpdatedState(onSelect)
 
     fun pick(y: Float) {
         val i = (y / heightPx * ALPHABET.size).toInt().coerceIn(0, ALPHABET.size - 1)
-        onSelect(ALPHABET[i])
+        currentOnSelect(ALPHABET[i])
     }
 
     Column(

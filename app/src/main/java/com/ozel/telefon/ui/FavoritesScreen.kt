@@ -35,9 +35,9 @@ import kotlinx.coroutines.withContext
 import java.text.Collator
 import java.util.Locale
 
-private data class Favorite(val name: String, val number: String, val label: String)
+internal data class Favorite(val name: String, val number: String, val label: String)
 
-private fun loadFavorites(context: Context): List<Favorite> {
+internal fun loadFavorites(context: Context): List<Favorite> {
     val list = mutableListOf<Favorite>()
     try {
         context.contentResolver.query(
@@ -65,18 +65,13 @@ private fun loadFavorites(context: Context): List<Favorite> {
 
 @Composable
 fun FavoritesScreen(hasPermission: Boolean, onCall: (String) -> Unit) {
-    val context = LocalContext.current
-    var items by remember { mutableStateOf<List<Favorite>>(emptyList()) }
-    val resume = rememberResumeCount()
-
-    LaunchedEffect(hasPermission, resume) {
-        if (hasPermission) items = withContext(Dispatchers.IO) { loadFavorites(context) }
-    }
+    // Veri ListData'da tutulur; sekme değişince rehber yeniden okunmaz.
+    val items = ListData.favorites
 
     LazyColumn(contentPadding = PaddingValues(bottom = 16.dp)) {
-        item { Column(Modifier.padding(top = 46.dp)) { LargeTitle("Hızlı Arama") } }
+        item(key = "header") { Column(Modifier.padding(top = 46.dp)) { LargeTitle("Hızlı Arama") } }
         if (items.isEmpty()) {
-            item {
+            item(key = "empty") {
                 Text(
                     "Rehberde yıldızladığın kişiler burada görünür.",
                     color = IOS.Gray,
@@ -84,7 +79,7 @@ fun FavoritesScreen(hasPermission: Boolean, onCall: (String) -> Unit) {
                 )
             }
         }
-        items(items) { fav ->
+        items(items, key = { it.name }, contentType = { "fav" }) { fav ->
             Column(Modifier.clickable { onCall(fav.number) }) {
                 Row(
                     verticalAlignment = Alignment.CenterVertically,

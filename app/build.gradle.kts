@@ -17,7 +17,11 @@ android {
 
     buildTypes {
         release {
-            isMinifyEnabled = false
+            // Hız testi için: debug anahtarıyla imzalanır, Android Studio'dan "release" seçip kurulabilir.
+            isMinifyEnabled = true
+            isShrinkResources = true
+            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"))
+            signingConfig = signingConfigs.getByName("debug")
         }
     }
 

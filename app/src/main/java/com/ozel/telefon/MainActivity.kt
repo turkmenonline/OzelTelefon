@@ -5,8 +5,13 @@ import android.app.role.RoleManager
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.database.ContentObserver
 import android.os.Build
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
+import android.provider.CallLog
+import android.provider.ContactsContract
 import android.provider.Settings
 import android.telecom.TelecomManager
 import android.widget.Toast
@@ -35,6 +40,7 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.text.font.FontWeight
@@ -57,6 +63,7 @@ import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -76,6 +83,7 @@ import com.ozel.telefon.ui.ContactDetailScreen
 import com.ozel.telefon.ui.DetailTarget
 import com.ozel.telefon.ui.DialerScreen
 import com.ozel.telefon.ui.FavoritesScreen
+import com.ozel.telefon.ui.ListData
 import com.ozel.telefon.ui.RecentsScreen
 import com.ozel.telefon.ui.VoicemailScreen
 import com.ozel.telefon.ui.theme.IOS
@@ -237,8 +245,62 @@ fun AppRoot(initialNumber: String) {
         if (initialNumber.isNotBlank()) tab = KEYPAD_TAB
     }
 
-    val call: (String) -> Unit = { placeCall(context, it) }
+    // remember: her yeniden çizimde yeni lambda oluşup liste satırlarını gereksiz tetiklemesin.
+    val call: (String) -> Unit = remember(context) { { n: String -> placeCall(context, n) } }
     var detail by remember { mutableStateOf<DetailTarget?>(null) }
+
+    // Listeler bir kez önden yüklenir; uygulama öne gelince arka planda tazelenir.
+    LaunchedEffect(hasPerms, resume) {
+        if (hasPerms) ListData.refresh(context)
+    }
+    // Arama kaydı / rehber değişince (arama bitti, kişi eklendi...) listeler hemen tazelenir.
+    DisposableEffect(hasPerms) {
+        if (!hasPerms) return@DisposableEffect onDispose { }
+        val handler = Handler(Looper.getMainLooper())
+        val recentsTask = Runnable { ListData.refresh(context, recents = true, contacts = false) }
+        val contactsTask = Runnable {
+            clearContactCaches()
+            ListData.refresh(context)
+        }
+        val callObserver = object : ContentObserver(handler) {
+            override fun onChange(selfChange: Boolean) {
+                handler.removeCallbacks(recentsTask)
+                handler.postDelayed(recentsTask, 300)
+            }
+        }
+        val contactObserver = object : ContentObserver(handler) {
+            override fun onChange(selfChange: Boolean) {
+                handler.removeCallbacks(contactsTask)
+                handler.postDelayed(contactsTask, 800)
+            }
+        }
+        val cr = context.contentResolver
+        try {
+            cr.registerContentObserver(CallLog.Calls.CONTENT_URI, true, callObserver)
+            cr.registerContentObserver(ContactsContract.Contacts.CONTENT_URI, true, contactObserver)
+        } catch (e: Exception) {
+            // izin yoksa sessizce geç; resume'da yine tazelenir
+        }
+        onDispose {
+            cr.unregisterContentObserver(callObserver)
+            cr.unregisterContentObserver(contactObserver)
+            handler.removeCallbacksAndMessages(null)
+        }
+    }
+    // Kişi kartı kapanınca (düzenleme/silme sonrası) listeleri tazele.
+    var detailWasOpen by remember { mutableStateOf(false) }
+    LaunchedEffect(detail) {
+        if (detail != null) {
+            detailWasOpen = true
+        } else if (detailWasOpen) {
+            detailWasOpen = false
+            if (hasPerms) ListData.refresh(context)
+        }
+    }
+
+    // Kaydırma konumu sekme değişince kaybolmasın.
+    val recentsState = rememberLazyListState()
+    val contactsState = rememberLazyListState()
 
     Box(Modifier.fillMaxSize()) {
     Scaffold(
@@ -321,9 +383,10 @@ fun AppRoot(initialNumber: String) {
             }
             when (tab) {
                 0 -> FavoritesScreen(hasPerms, call)
-                1 -> RecentsScreen(hasPerms, call) { detail = DetailTarget(it) }
+                1 -> RecentsScreen(hasPerms, recentsState, call) { detail = DetailTarget(it) }
                 2 -> ContactsScreen(
                     hasPerms,
+                    contactsState,
                     call,
                     onOpen = { detail = DetailTarget(it) },
                     onAdd = { detail = DetailTarget("", startEditing = true) }

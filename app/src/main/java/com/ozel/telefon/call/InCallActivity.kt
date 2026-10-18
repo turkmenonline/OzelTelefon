@@ -1,6 +1,7 @@
 package com.ozel.telefon.call
 
 import android.graphics.Color as AndroidColor
+import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.SystemBarStyle
@@ -10,6 +11,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.produceState
+import androidx.compose.runtime.remember
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.platform.LocalContext
 import com.ozel.telefon.ContactInfo
@@ -19,7 +21,6 @@ import com.ozel.telefon.placeCall
 import com.ozel.telefon.lookupContact
 import com.ozel.telefon.ui.theme.OzelTelefonTheme
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 
 class InCallActivity : ComponentActivity() {
@@ -27,12 +28,22 @@ class InCallActivity : ComponentActivity() {
     @Suppress("DEPRECATION")
     override fun finish() {
         super.finish()
-        overridePendingTransition(R.anim.hold, R.anim.fade_out)
+        // Android 14+ için geçiş onCreate'te overrideActivityTransition ile ayarlandı.
+        if (Build.VERSION.SDK_INT < 34) {
+            overridePendingTransition(R.anim.hold, R.anim.fade_out)
+        }
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        overridePendingTransition(R.anim.fade_in, R.anim.hold)
+        if (Build.VERSION.SDK_INT >= 34) {
+            // Samsung/Android 14'te eski overridePendingTransition yok sayılıyor; bu yöntem geçerli.
+            overrideActivityTransition(OVERRIDE_TRANSITION_OPEN, R.anim.fade_in, R.anim.hold)
+            overrideActivityTransition(OVERRIDE_TRANSITION_CLOSE, R.anim.hold, R.anim.fade_out)
+        } else {
+            @Suppress("DEPRECATION")
+            overridePendingTransition(R.anim.fade_in, R.anim.hold)
+        }
         setShowWhenLocked(true)
         setTurnScreenOn(true)
         // Fotoğraf üstünde okunsun diye durum/gezinme çubuğu simgeleri hep beyaz.
@@ -51,13 +62,18 @@ class InCallActivity : ComponentActivity() {
                 val endedState by CallState.ended.collectAsState()
                 val e = endedState
 
-                // Çağrı bitince (meşgul ekranı yoksa) kısa süre bekleyip kapat.
+                // Çağrı bitince (meşgul ekranı yoksa) hemen kapat; solma animasyonu pencerede oynar.
                 LaunchedEffect(current == null && e == null) {
                     if (current == null && e == null) {
-                        delay(500)
                         finish()
                     }
                 }
+
+                // Kapanırken ekran boşalıp siyah kalmasın diye son çağrı ekranı görünür tutulur.
+                val last = remember { arrayOfNulls<CallUi>(1) }
+                if (current != null) last[0] = current
+                if (e != null) last[0] = null
+                val shown = current ?: last[0]
 
                 if (e != null) {
                     val endedInfo by produceState<ContactInfo?>(null, e.number) {
@@ -76,13 +92,13 @@ class InCallActivity : ComponentActivity() {
                             }
                         )
                     }
-                } else if (current != null) {
-                    val info by produceState<ContactInfo?>(null, current.number) {
-                        value = withContext(Dispatchers.IO) { lookupContact(context, current.number) }
+                } else if (shown != null) {
+                    val info by produceState<ContactInfo?>(null, shown.number) {
+                        value = withContext(Dispatchers.IO) { lookupContact(context, shown.number) }
                     }
                     FadeIn(350) {
                     InCallScreen(
-                        ui = current,
+                        ui = shown,
                         info = info,
                         audio = audio,
                         onAnswer = { CallState.answer() },
