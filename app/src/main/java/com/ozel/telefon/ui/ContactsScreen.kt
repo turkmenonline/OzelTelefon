@@ -1,5 +1,6 @@
 package com.ozel.telefon.ui
 
+import com.ozel.telefon.blockKey
 import android.content.Context
 import android.content.Intent
 import android.provider.ContactsContract
@@ -247,12 +248,19 @@ fun ContactsScreen(
                 }
                 items(contacts, key = { "${it.name}|${it.number}" }, contentType = { "contact" }) { contact ->
                     Column(Modifier.clickable { onOpen(contact.number) }) {
-                        ContactName(
-                            contact.name,
+                        Row(
                             Modifier
                                 .fillMaxWidth()
-                                .padding(start = 16.dp, end = 36.dp, top = 12.dp, bottom = 12.dp)
-                        )
+                                .padding(start = 16.dp, end = 36.dp, top = 12.dp, bottom = 12.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            // iOS: engelli kişinin adının önünde kırmızı yasak işareti (ad kırmızı değil).
+                            if (blockKey(contact.number) in ListData.blocked) {
+                                BlockedIcon(16.dp)
+                                Spacer(Modifier.width(6.dp))
+                            }
+                            ContactName(contact.name, Modifier.weight(1f))
+                        }
                         HorizontalDivider(
                             modifier = Modifier.padding(start = 16.dp),
                             thickness = 0.5.dp,
@@ -332,5 +340,23 @@ private fun AlphabetIndex(modifier: Modifier, onSelect: (String) -> Unit) {
                 Text(it, fontSize = 10.5.sp, fontWeight = FontWeight.SemiBold, color = IOS.Blue)
             }
         }
+    }
+}
+
+/** Kırmızı daire + çapraz çizgi ("yasak" işareti). */
+@Composable
+fun BlockedIcon(size: androidx.compose.ui.unit.Dp) {
+    androidx.compose.foundation.Canvas(Modifier.size(size)) {
+        val w = this.size.minDimension * 0.14f
+        val r = this.size.minDimension / 2f - w / 2f
+        drawCircle(IOS.Red, radius = r, style = androidx.compose.ui.graphics.drawscope.Stroke(width = w))
+        val d = r * 0.7071f
+        val c = center
+        drawLine(
+            IOS.Red,
+            androidx.compose.ui.geometry.Offset(c.x - d, c.y - d),
+            androidx.compose.ui.geometry.Offset(c.x + d, c.y + d),
+            strokeWidth = w
+        )
     }
 }

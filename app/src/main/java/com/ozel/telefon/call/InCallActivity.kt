@@ -18,8 +18,12 @@ import com.ozel.telefon.ContactInfo
 import com.ozel.telefon.R
 import com.ozel.telefon.formatNumber
 import com.ozel.telefon.placeCall
+import com.ozel.telefon.sendSms
 import com.ozel.telefon.lookupContact
 import com.ozel.telefon.ui.theme.OzelTelefonTheme
+import android.telecom.Call as TCall
+import com.ozel.telefon.loadContactPhoto
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -63,8 +67,15 @@ class InCallActivity : ComponentActivity() {
                 val e = endedState
 
                 // Çağrı bitince (meşgul ekranı yoksa) hemen kapat; solma animasyonu pencerede oynar.
+                // Bağlanmış arama normal bitince "Arama Bitti" ile soluklaşıp kendiliğinden kapanır.
+                val wasConnected = remember { booleanArrayOf(false) }
+                if (current != null &&
+                    (current.state == TCall.STATE_ACTIVE || current.state == TCall.STATE_HOLDING)
+                ) wasConnected[0] = true
+
                 LaunchedEffect(current == null && e == null) {
                     if (current == null && e == null) {
+                        if (wasConnected[0]) delay(1300)
                         finish()
                     }
                 }
@@ -76,6 +87,15 @@ class InCallActivity : ComponentActivity() {
                 val shown = current ?: last[0]
 
                 if (e != null) {
+                    val endedBg by produceState(DefaultCallBg, e.number) {
+                        value = withContext(Dispatchers.IO) {
+                            callGradient(
+                                e.displayName ?: lookupContact(context, e.number)?.name,
+                                loadContactPhoto(context, e.number, false, 200)
+                            ).takeIf { lookupContact(context, e.number)?.name != null || e.displayName != null }
+                                ?: DefaultCallBg
+                        }
+                    }
                     val endedInfo by produceState<ContactInfo?>(null, e.number) {
                         value = withContext(Dispatchers.IO) { lookupContact(context, e.number) }
                     }
@@ -84,6 +104,7 @@ class InCallActivity : ComponentActivity() {
                             title = e.displayName ?: endedInfo?.name
                                 ?: formatNumber(e.number).ifBlank { "Bilinmeyen" },
                             reason = e.reason,
+                            bg = endedBg,
                             onDismiss = { CallState.dismissEnded() },
                             onRedial = {
                                 val n = e.number
@@ -96,8 +117,17 @@ class InCallActivity : ComponentActivity() {
                     val info by produceState<ContactInfo?>(null, shown.number) {
                         value = withContext(Dispatchers.IO) { lookupContact(context, shown.number) }
                     }
+                    val bg by produceState(DefaultCallBg, shown.number) {
+                        value = withContext(Dispatchers.IO) {
+                            val name = lookupContact(context, shown.number)?.name ?: shown.displayName
+                            if (name == null) DefaultCallBg
+                            else callGradient(name, loadContactPhoto(context, shown.number, false, 200))
+                        }
+                    }
                     FadeIn(350) {
                     InCallScreen(
+                        bg = bg,
+                        ending = current == null,
                         ui = shown,
                         info = info,
                         audio = audio,
@@ -108,7 +138,11 @@ class InCallActivity : ComponentActivity() {
                         onSpeaker = { CallState.toggleSpeaker() },
                         onHold = { CallState.toggleHold() },
                         onDtmfStart = { CallState.dtmfStart(it) },
-                        onDtmfStop = { CallState.dtmfStop() }
+                        onDtmfStop = { CallState.dtmfStop() },
+                        onMessage = {
+                            CallState.reject()
+                            sendSms(context, shown.number)
+                        }
                     )
                     }
                 }

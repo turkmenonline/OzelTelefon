@@ -1,5 +1,6 @@
 package com.ozel.telefon
 
+import androidx.compose.animation.Crossfade
 import com.ozel.telefon.ui.F7
 
 import android.Manifest
@@ -94,7 +95,7 @@ import com.ozel.telefon.ui.ContactsScreen
 import com.ozel.telefon.ui.ContactDetailScreen
 import com.ozel.telefon.ui.DetailTarget
 import com.ozel.telefon.ui.DialerScreen
-import com.ozel.telefon.ui.FavoritesScreen
+import com.ozel.telefon.ui.GlassTabBar
 import com.ozel.telefon.ui.ListData
 import com.ozel.telefon.ui.RecentsScreen
 import com.ozel.telefon.ui.VoicemailScreen
@@ -146,31 +147,11 @@ private fun coreGranted(context: Context): Boolean =
 private fun isDefaultDialer(context: Context): Boolean =
     context.getSystemService(TelecomManager::class.java).defaultDialerPackage == context.packageName
 
-@Composable
-private fun TabIcon(index: Int, tint: Color) {
-    // Sesli mesaj (kaset) ikonu yatay uzun; iPhone'daki gibi daha geniş çizilir.
-    Box(Modifier.size(27.dp), contentAlignment = Alignment.Center) {
-        Icon(
-            tabs[index].icon,
-            contentDescription = null,
-            tint = tint,
-            modifier = Modifier.requiredSize(if (index == 4) 37.dp else 27.dp)
-        )
-    }
-}
+private val tabLabels = listOf("Aramalar", "Kişiler", "Tuş Takımı")
+private val tabIcons = listOf(F7.ClockFill, F7.PersonCropCircleFill, F7.CircleGrid3x3Fill)
 
-private class Tab(val label: String, val icon: ImageVector)
-
-private val tabs = listOf(
-    Tab("Hızlı Arama", F7.StarFill),
-    Tab("Son Aramalar", F7.ClockFill),
-    Tab("Kişiler", F7.PersonCropCircleFill),
-    Tab("Klavye", F7.CircleGrid3x3Fill),
-    Tab("Sesli Mesaj", F7.Recordingtape)
-)
-
-private const val KEYPAD_TAB = 3
-private const val RECENTS_TAB = 1
+private const val KEYPAD_TAB = 2
+private const val RECENTS_TAB = 0
 
 @Composable
 fun AppRoot(initialNumber: String) {
@@ -243,7 +224,7 @@ fun AppRoot(initialNumber: String) {
         animationSpec = tween(220),
         label = "blur"
     )
-    val tabBarHeight = 52.dp + 0.5.dp + WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
+    val tabBarHeight = 76.dp + WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
 
     // Listeler bir kez önden yüklenir; uygulama öne gelince arka planda tazelenir.
     LaunchedEffect(hasPerms, resume) {
@@ -304,54 +285,26 @@ fun AppRoot(initialNumber: String) {
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
         bottomBar = {
-            Column {
-                HorizontalDivider(thickness = 0.5.dp, color = MaterialTheme.colorScheme.surfaceVariant)
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .background(MaterialTheme.colorScheme.surface)
-                        .navigationBarsPadding()
-                        .height(52.dp)
-                ) {
-                    tabs.forEachIndexed { i, t ->
-                        val selected = tab == i
-                        val tint = if (selected) IOS.Blue else IOS.Gray
-                        Column(
-                            modifier = Modifier
-                                .weight(1f)
-                                .fillMaxHeight()
-                                .clickable(
-                                    interactionSource = remember { MutableInteractionSource() },
-                                    indication = null
-                                ) {
-                                    if (tab == i && detail == null) {
-                                        when (i) {
-                                            1 -> tabScope.launch { recentsState.animateScrollToItem(0) }
-                                            2 -> tabScope.launch { contactsState.animateScrollToItem(0) }
-                                        }
-                                    }
-                                    tab = i
-                                    detail = null
-                                }
-                                .padding(top = 6.dp),
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                            verticalArrangement = Arrangement.Top
-                        ) {
-                            TabIcon(i, tint)
-                            Spacer(Modifier.height(1.dp))
-                            Text(
-                                t.label,
-                                color = tint,
-                                fontSize = 10.sp,
-                                letterSpacing = (-0.1).sp,
-                                maxLines = 1,
-                                softWrap = false,
-                                fontWeight = FontWeight.Medium
-                            )
+            GlassTabBar(
+                labels = tabLabels,
+                icons = tabIcons,
+                selected = tab,
+                onSelect = { i ->
+                    if (tab == i && detail == null) {
+                        when (i) {
+                            0 -> tabScope.launch { recentsState.animateScrollToItem(0) }
+                            1 -> tabScope.launch { contactsState.animateScrollToItem(0) }
                         }
                     }
-                }
-            }
+                    tab = i
+                    detail = null
+                },
+                onSearch = {
+                    tab = 1
+                    detail = null
+                },
+                modifier = Modifier.navigationBarsPadding()
+            )
         }
     ) { padding ->
         Column(
@@ -389,24 +342,25 @@ fun AppRoot(initialNumber: String) {
                     )
                 }
             }
-            when (tab) {
-                0 -> FavoritesScreen(hasPerms, call)
-                1 -> RecentsScreen(
-                    hasPerms,
-                    recentsState,
-                    call,
-                    onInfo = { detail = DetailTarget(it) },
-                    onMenu = { menuTarget = it }
-                )
-                2 -> ContactsScreen(
-                    hasPerms,
-                    contactsState,
-                    call,
-                    onOpen = { detail = DetailTarget(it) },
-                    onAdd = { detail = DetailTarget("", startEditing = true) }
-                )
-                3 -> DialerScreen(initialNumber, call)
-                else -> VoicemailScreen()
+            // iOS 26: sekme geçişi ~0,28 sn çapraz solma.
+            Crossfade(targetState = tab, animationSpec = tween(280), label = "tabs") { t ->
+                when (t) {
+                    0 -> RecentsScreen(
+                        hasPerms,
+                        recentsState,
+                        call,
+                        onInfo = { detail = DetailTarget(it) },
+                        onMenu = { menuTarget = it }
+                    )
+                    1 -> ContactsScreen(
+                        hasPerms,
+                        contactsState,
+                        call,
+                        onOpen = { detail = DetailTarget(it) },
+                        onAdd = { detail = DetailTarget("", startEditing = true) }
+                    )
+                    else -> DialerScreen(initialNumber, call)
+                }
             }
         }
     }

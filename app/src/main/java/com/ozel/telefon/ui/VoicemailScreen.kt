@@ -36,3 +36,26 @@ fun VoicemailScreen() {
         )
     }
 }
+
+/** Sesli mesaj satırı: Aramalar listesinin içinde (filtre = Sesli Mesaj) kullanılır; fillMaxSize yok. */
+@Composable
+fun VoicemailBody() {
+    val context = LocalContext.current
+    Column(Modifier.padding(top = 4.dp)) {
+        Text(
+            "Sesli mesaj kutunu aramak için dokun.",
+            color = IOS.Gray,
+            fontSize = 16.sp,
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+        )
+        Text(
+            "Sesli Mesajı Ara",
+            color = IOS.Blue,
+            fontSize = 18.sp,
+            fontWeight = FontWeight.Medium,
+            modifier = Modifier
+                .clickable { callVoicemail(context) }
+                .padding(horizontal = 16.dp, vertical = 12.dp)
+        )
+    }
+}

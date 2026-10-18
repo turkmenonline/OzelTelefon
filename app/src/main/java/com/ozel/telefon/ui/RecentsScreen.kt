@@ -1,6 +1,11 @@
 package com.ozel.telefon.ui
 
+import androidx.compose.ui.graphics.TransformOrigin
+import android.content.ContentUris
+import android.content.ContentValues
 import android.content.Context
+import android.content.Intent
+import android.provider.ContactsContract
 import android.provider.CallLog
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -9,6 +14,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -204,9 +210,15 @@ fun RecentsScreen(
     // Veri ListData'da tutulur; sekme değişince diskten yeniden okunmaz.
     val items = ListData.recents
     val today = ListData.today
+    val favorites = ListData.favorites
+    var showFilterMenu by remember { mutableStateOf(false) }
 
-    val groups = remember(items, filter, query) {
-        val base = if (filter == 1) items.filter { it.missed } else items
+    val groups = remember(items, filter, query, ListData.version) {
+        val base = when (filter) {
+            1 -> items.filter { it.missed }
+            2 -> emptyList()   // Sesli Mesaj: arama listesi yerine sesli mesaj satırı gösterilir
+            else -> items
+        }
         val searched = if (query.isBlank()) base else base.filter {
             (it.cachedName?.contains(query, ignoreCase = true) == true) || it.number.contains(query)
         }
@@ -237,74 +249,118 @@ fun RecentsScreen(
         }
     }
 
+    // "Favorilere Ekle": rehberden kişi seç, yıldızla (STARRED), listeyi tazele.
+    val pickFavorite = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { res ->
+        val uri = res.data?.data ?: return@rememberLauncherForActivityResult
+        scope.launch {
+            val ok = withContext(Dispatchers.IO) {
+                runCatching {
+                    val cid = context.contentResolver.query(
+                        uri, arrayOf(ContactsContract.CommonDataKinds.Phone.CONTACT_ID), null, null, null
+                    )?.use { if (it.moveToFirst()) it.getLong(0) else null } ?: return@runCatching false
+                    val cv = ContentValues().apply { put(ContactsContract.Contacts.STARRED, 1) }
+                    context.contentResolver.update(
+                        ContentUris.withAppendedId(ContactsContract.Contacts.CONTENT_URI, cid), cv, null, null
+                    ) > 0
+                }.getOrDefault(false)
+            }
+            if (ok) ListData.refresh(context, recents = false, contacts = true)
+            else Toast.makeText(context, "Favorilere eklenemedi", Toast.LENGTH_SHORT).show()
+        }
+    }
+
     val dividerColor = MaterialTheme.colorScheme.surfaceVariant
 
     LazyColumn(state = listState, contentPadding = PaddingValues(bottom = 16.dp)) {
         item(key = "header", contentType = "header") {
-            Column {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(top = 12.dp, bottom = 6.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Segmented(listOf("Tümü", "Cevapsız"), filter) { filter = it }
-
-                    Box(Modifier.align(Alignment.CenterStart).padding(start = 16.dp)) {
-                        Text(
-                            if (editing) "Bitti" else "Düzenle",
-                            color = IOS.Blue,
-                            fontSize = 17.sp,
-                            modifier = Modifier.clickable(
-                                interactionSource = remember { MutableInteractionSource() },
-                                indication = null
-                            ) {
-                                if (editing) {
-                                    editing = false
-                                    armedKey = null
-                                } else {
-                                    showEditMenu = true
-                                }
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 10.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Box(Modifier.align(Alignment.CenterStart)) {
+                    GlassPillButton(
+                        text = if (editing) "Bitti" else "Düzenle",
+                        onClick = {
+                            if (editing) {
+                                editing = false
+                                armedKey = null
+                            } else {
+                                showEditMenu = true
+                            }
+                        }
+                    )
+                    if (showEditMenu) {
+                        EditPopup(
+                            onDismiss = { showEditMenu = false },
+                            onNameAndPhoto = {
+                                showEditMenu = false
+                                Toast.makeText(context, "Bu özellik bu uygulamada yok", Toast.LENGTH_SHORT).show()
+                            },
+                            onAddFavorite = {
+                                showEditMenu = false
+                                pickFavorite.launch(
+                                    Intent(Intent.ACTION_PICK, ContactsContract.CommonDataKinds.Phone.CONTENT_URI)
+                                )
+                            },
+                            onSelect = {
+                                showEditMenu = false
+                                editing = true
                             }
                         )
-                        if (showEditMenu) {
-                            EditPopup(
-                                onDismiss = { showEditMenu = false },
-                                onNameAndPhoto = {
-                                    showEditMenu = false
-                                    Toast.makeText(context, "Bu özellik bu uygulamada yok", Toast.LENGTH_SHORT).show()
-                                },
+                    }
+                }
+                Text(
+                    "Aramalar",
+                    fontSize = 17.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.onBackground
+                )
+                Box(Modifier.align(Alignment.CenterEnd)) {
+                    if (editing) {
+                        GlassPillButton(
+                            text = "Sil",
+                            onClick = { if (groups.isNotEmpty()) confirmClear = true }
+                        )
+                    } else {
+                        GlassCircleButton(onClick = { showFilterMenu = true }) {
+                            FilterLinesIcon(MaterialTheme.colorScheme.onBackground)
+                        }
+                        if (showFilterMenu) {
+                            FilterPopup(
+                                selected = filter,
                                 onSelect = {
-                                    showEditMenu = false
-                                    editing = true
+                                    filter = it
+                                    showFilterMenu = false
+                                },
+                                onDismiss = { showFilterMenu = false },
+                                onClassicLayout = {
+                                    showFilterMenu = false
+                                    Toast.makeText(context, "Klasik düzen henüz yok", Toast.LENGTH_SHORT).show()
+                                },
+                                onManageFiltering = {
+                                    showFilterMenu = false
+                                    Toast.makeText(context, "Bu özellik bu uygulamada yok", Toast.LENGTH_SHORT).show()
                                 }
                             )
                         }
                     }
-                    if (editing) {
-                        Text(
-                            "Sil",
-                            color = IOS.Blue,
-                            fontSize = 17.sp,
-                            modifier = Modifier
-                                .align(Alignment.CenterEnd)
-                                .padding(end = 16.dp)
-                                .clickable(
-                                    interactionSource = remember { MutableInteractionSource() },
-                                    indication = null
-                                ) { if (groups.isNotEmpty()) confirmClear = true }
-                        )
-                    }
                 }
-                LargeTitle("Son Aramalar")
             }
         }
-        item(key = "search", contentType = "search") {
-            SearchField(
-                value = query,
-                onValueChange = { query = it },
-                placeholder = "Arayın",
-                modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp)
+        if (filter == 0 && favorites.isNotEmpty()) {
+            item(key = "favorites", contentType = "favorites") {
+                FavoritesGrid(favorites.take(8), onCall)
+            }
+        }
+        item(key = "recents-title", contentType = "title") {
+            Text(
+                if (filter == 2) "Sesli Mesaj" else if (filter == 1) "Cevapsız Aramalar" else "Son Aramalar",
+                fontSize = 22.sp,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onBackground,
+                modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 14.dp, bottom = 6.dp)
             )
         }
         if (!hasPermission) {
@@ -315,6 +371,8 @@ fun RecentsScreen(
                     modifier = Modifier.padding(20.dp)
                 )
             }
+        } else if (filter == 2) {
+            item(key = "voicemail") { VoicemailBody() }
         } else if (groups.isEmpty()) {
             item(key = "empty") { Text("Arama yok.", color = IOS.Gray, modifier = Modifier.padding(20.dp)) }
         }
@@ -332,8 +390,7 @@ fun RecentsScreen(
                 },
                 onCall = onCall,
                 onInfo = onInfo,
-                onMenu = onMenu,
-                modifier = Modifier.animateItemPlacement(tween(260))
+                onMenu = onMenu
             )
         }
     }
@@ -341,7 +398,7 @@ fun RecentsScreen(
     if (confirmClear) {
         AlertDialog(
             onDismissRequest = { confirmClear = false },
-            title = { Text(if (filter == 1 || query.isNotBlank()) "Listelenen aramalar silinsin mi?" else "Tüm aramalar silinsin mi?") },
+            title = { Text(if (filter != 0 || query.isNotBlank()) "Listelenen aramalar silinsin mi?" else "Tüm aramalar silinsin mi?") },
             confirmButton = {
                 TextButton(onClick = {
                     confirmClear = false
@@ -360,15 +417,16 @@ fun RecentsScreen(
 
 /** "Düzenle"ye basınca açılan iOS tarzı küçük menü. */
 @Composable
-private fun EditPopup(onDismiss: () -> Unit, onNameAndPhoto: () -> Unit, onSelect: () -> Unit) {
+private fun EditPopup(onDismiss: () -> Unit, onNameAndPhoto: () -> Unit, onAddFavorite: () -> Unit, onSelect: () -> Unit) {
     val density = androidx.compose.ui.platform.LocalDensity.current
-    val dy = with(density) { 30.dp.roundToPx() }
+    val dy = with(density) { 48.dp.roundToPx() }
     Popup(
         alignment = Alignment.TopStart,
         offset = IntOffset(0, dy),
         onDismissRequest = onDismiss,
         properties = PopupProperties(focusable = true)
     ) {
+      PopupAppear(TransformOrigin(0f, 0f)) {
         Column(
             Modifier
                 .width(250.dp)
@@ -377,8 +435,12 @@ private fun EditPopup(onDismiss: () -> Unit, onNameAndPhoto: () -> Unit, onSelec
         ) {
             PopupRow("Ad ve Fotoğraf Ayarla", F7.PersonCropCircleFill, onNameAndPhoto)
             HorizontalDivider(thickness = 0.5.dp, color = MaterialTheme.colorScheme.background.copy(alpha = 0.5f))
+            HorizontalDivider(thickness = 0.5.dp, color = MaterialTheme.colorScheme.background.copy(alpha = 0.5f))
+            PopupRow("Favorilere Ekle", F7.PhoneFill, onAddFavorite)
+            HorizontalDivider(thickness = 0.5.dp, color = MaterialTheme.colorScheme.background.copy(alpha = 0.5f))
             PopupRow("Seç", F7.CheckmarkCircle, onSelect)
         }
+      }
     }
 }
 
@@ -425,14 +487,14 @@ private fun RecentRow(
         }
     }
     val contactName = info?.name ?: call.cachedName
-    val title = remember(contactName, number, group.count) {
-        (contactName ?: formatNumber(number).ifBlank { "Bilinmeyen" }) +
-            if (group.count > 1) " (${group.count})" else ""
+    // iOS 26: isim düz kalır, grup sayısı alt satırda tip etiketinin yanında ("cep (2)").
+    val title = remember(contactName, number) {
+        contactName ?: formatNumber(number).ifBlank { "Bilinmeyen" }
     }
-    val subtitle = when {
+    val subtitle = (when {
         contactName == null -> "Bilinmeyen"
         else -> call.cachedLabel ?: info?.label ?: "telefon"
-    }
+    }) + if (group.count > 1) " (${group.count})" else ""
     val outgoing = call.type == CallLog.Calls.OUTGOING_TYPE
     val dateText = remember(call.date, today) { formatDate(call.date, today) }
 
@@ -450,7 +512,7 @@ private fun RecentRow(
                     val y = coords[0]?.positionInRoot()?.y ?: 0f
                     onMenu(MenuTarget(number, contactName, y))
                 }
-            ) { onCall(call.number) }
+            ) { onInfo(call.number) }
     ) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
@@ -477,7 +539,7 @@ private fun RecentRow(
                     Spacer(Modifier.width(12.dp))
                 }
             }
-            ContactAvatar(call.number, contactName, 40.dp, 17.sp)
+            ContactAvatar(call.number, contactName, 46.dp, 18.sp)
             Spacer(Modifier.width(12.dp))
             Column(Modifier.weight(1f)) {
                 Text(
@@ -517,23 +579,172 @@ private fun RecentRow(
                     exit = shrinkHorizontally(tween(180)) + fadeOut(tween(120))
                 ) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Spacer(Modifier.width(8.dp))
-                        Icon(
-                            F7.InfoCircle,
-                            contentDescription = "Bilgi",
-                            tint = IOS.Blue,
-                            modifier = Modifier
-                                .size(22.dp)
-                                .clickable { onInfo(call.number) }
-                        )
+                        Spacer(Modifier.width(12.dp))
+                        Box(
+                            Modifier
+                                .size(40.dp)
+                                .clip(CircleShape)
+                                .background(MaterialTheme.colorScheme.surfaceVariant)
+                                .clickable { onCall(call.number) },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                F7.PhoneFill,
+                                contentDescription = "Ara",
+                                tint = IOS.Blue,
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
                     }
                 }
             }
         }
         HorizontalDivider(
-            modifier = Modifier.padding(start = if (editing) 102.dp else 68.dp),
+            modifier = Modifier.padding(start = if (editing) 108.dp else 74.dp),
             thickness = 0.5.dp,
             color = dividerColor
         )
+    }
+}
+
+/** iOS 26 filtre menüsü: düzen seçici + liste filtresi + "Filtrelemeyi Yönetin" tek popup'ta. */
+@Composable
+private fun FilterPopup(
+    selected: Int,
+    onSelect: (Int) -> Unit,
+    onDismiss: () -> Unit,
+    onClassicLayout: () -> Unit,
+    onManageFiltering: () -> Unit
+) {
+    val density = androidx.compose.ui.platform.LocalDensity.current
+    val dy = with(density) { 48.dp.roundToPx() }
+    val labels = listOf("Aramalar", "Cevapsızlar", "Sesli Mesaj")
+    val fg = MaterialTheme.colorScheme.onBackground
+    Popup(
+        alignment = Alignment.TopEnd,
+        offset = IntOffset(0, dy),
+        onDismissRequest = onDismiss,
+        properties = PopupProperties(focusable = true)
+    ) {
+      PopupAppear(TransformOrigin(1f, 0f)) {
+        Column(
+            Modifier
+                .width(290.dp)
+                .clip(RoundedCornerShape(24.dp))
+                .background(glassSurfaceColor())
+                .padding(vertical = 8.dp)
+        ) {
+            // Düzen seçici: Klasik / Birleştirilmiş (şimdilik yalnız Birleştirilmiş çalışır)
+            Row(
+                Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                LayoutChoice("Klasik", false, onClassicLayout, Modifier.weight(1f))
+                LayoutChoice("Birleştirilmiş", true, onDismiss, Modifier.weight(1f))
+            }
+            HorizontalDivider(thickness = 0.5.dp, color = fg.copy(alpha = 0.12f))
+            labels.forEachIndexed { i, label ->
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .height(48.dp)
+                        .iosClickable { onSelect(i) }
+                        .padding(horizontal = 16.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Box(Modifier.size(26.dp), contentAlignment = Alignment.CenterStart) {
+                        if (i == selected) {
+                            Icon(F7.CheckmarkCircle, null, tint = fg, modifier = Modifier.size(18.dp))
+                        }
+                    }
+                    Text(label, fontSize = 17.sp, color = fg)
+                }
+            }
+            HorizontalDivider(thickness = 0.5.dp, color = fg.copy(alpha = 0.12f))
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .height(48.dp)
+                    .iosClickable(onClick = onManageFiltering)
+                    .padding(horizontal = 16.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text("Filtrelemeyi Yönetin", fontSize = 17.sp, color = fg)
+            }
+        }
+      }
+    }
+}
+
+@Composable
+private fun LayoutChoice(label: String, selected: Boolean, onClick: () -> Unit, modifier: Modifier = Modifier) {
+    val fg = MaterialTheme.colorScheme.onBackground
+    Column(
+        modifier.iosClickable(onClick = onClick),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Box(
+            Modifier
+                .fillMaxWidth()
+                .height(56.dp)
+                .clip(RoundedCornerShape(12.dp))
+                .background(MaterialTheme.colorScheme.surfaceVariant),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(F7.PhoneFill, null, tint = if (selected) IOS.Blue else IOS.Gray, modifier = Modifier.size(24.dp))
+        }
+        Text(
+            label,
+            fontSize = 13.sp,
+            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
+            color = if (selected) IOS.Blue else fg,
+            modifier = Modifier.padding(top = 4.dp)
+        )
+    }
+}
+
+/** Favoriler: 4 sütunlu kutucuk ızgarası (iOS 26 Aramalar ekranının üstü). */
+@Composable
+private fun FavoritesGrid(favs: List<Favorite>, onCall: (String) -> Unit) {
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp),
+        verticalArrangement = Arrangement.spacedBy(14.dp)
+    ) {
+        favs.chunked(4).forEach { rowItems ->
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                rowItems.forEach { f -> FavoriteTile(f, onCall, Modifier.weight(1f)) }
+                repeat(4 - rowItems.size) { Spacer(Modifier.weight(1f)) }
+            }
+        }
+    }
+}
+
+@Composable
+private fun FavoriteTile(fav: Favorite, onCall: (String) -> Unit, modifier: Modifier = Modifier) {
+    val first = fav.name.substringBefore(' ')
+    Column(
+        modifier.clickable(
+            interactionSource = remember { MutableInteractionSource() },
+            indication = null
+        ) { onCall(fav.number) },
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Box(
+            Modifier
+                .fillMaxWidth()
+                .aspectRatio(0.78f)
+                .clip(RoundedCornerShape(22.dp))
+                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f)),
+            contentAlignment = Alignment.Center
+        ) {
+            ContactAvatar(fav.number, fav.name, 54.dp, 20.sp)
+        }
+        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 4.dp)) {
+            Icon(F7.PhoneFill, null, tint = IOS.Gray, modifier = Modifier.size(11.dp))
+            Spacer(Modifier.width(3.dp))
+            Text(first, fontSize = 13.sp, color = IOS.Gray, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        }
     }
 }

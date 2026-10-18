@@ -1,5 +1,6 @@
 package com.ozel.telefon.ui
 
+import com.ozel.telefon.loadBlockedKeys
 import android.content.Context
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -30,6 +31,8 @@ object ListData {
     var profile by mutableStateOf<String?>(null)
         private set
     internal var favorites by mutableStateOf<List<Favorite>>(emptyList())
+        private set
+    var blocked by mutableStateOf<Set<String>>(emptySet())
         private set
 
     /** Bugünün gece yarısı; satırlarda "Dün/gün adı" hesabı için. */
@@ -96,6 +99,8 @@ object ListData {
         val (list, prof, favs) = withContext(Dispatchers.IO) {
             Triple(loadContacts(app), loadProfileName(app), loadFavorites(app))
         }
+        val blk = withContext(Dispatchers.IO) { loadBlockedKeys(app) }
+        if (blk != blocked) blocked = blk
         if (list != contacts) contacts = list
         if (prof != profile) profile = prof
         if (favs != favorites) favorites = favs

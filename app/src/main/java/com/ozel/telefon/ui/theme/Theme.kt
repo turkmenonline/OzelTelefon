@@ -3,6 +3,7 @@ package com.ozel.telefon.ui.theme
 import android.content.Context
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ProvideTextStyle
 import androidx.compose.material3.Typography
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
@@ -12,7 +13,9 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.sp
 
 /** iOS sistem renkleri */
 object IOS {
@@ -106,6 +109,9 @@ fun OzelTelefonTheme(
     MaterialTheme(
         colorScheme = scheme,
         typography = Typography().withFont(family),
-        content = content
+        content = {
+            // SF Pro Text harfleri iOS'ta sistemin yaptığı sıkılaştırma olmadan geniş durur; hafifçe daraltılır.
+            ProvideTextStyle(TextStyle(letterSpacing = (-0.3).sp), content)
+        }
     )
 }

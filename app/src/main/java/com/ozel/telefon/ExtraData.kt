@@ -162,3 +162,23 @@ fun formatTr(number: String): String {
     if (!core.startsWith("5") && core.length != 10) return formatNumber(number)
     return "0 (${core.substring(0, 3)}) ${core.substring(3, 6)} ${core.substring(6, 8)} ${core.substring(8, 10)}"
 }
+
+/** Engellenen numaraların (son 9 hane) kümesi. Varsayılan telefon uygulaması değilse boş döner. */
+fun loadBlockedKeys(context: Context): Set<String> {
+    return try {
+        val out = HashSet<String>()
+        context.contentResolver.query(
+            BlockedNumberContract.BlockedNumbers.CONTENT_URI,
+            arrayOf(BlockedNumberContract.BlockedNumbers.COLUMN_ORIGINAL_NUMBER),
+            null, null, null
+        )?.use { c ->
+            while (c.moveToNext()) out.add(blockKey(c.getString(0)))
+        }
+        out
+    } catch (e: Exception) {
+        emptySet()
+    }
+}
+
+fun blockKey(number: String?): String =
+    (number ?: "").filter { it.isDigit() }.takeLast(9)
