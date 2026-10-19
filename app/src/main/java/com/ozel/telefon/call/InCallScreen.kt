@@ -157,7 +157,14 @@ fun InCallScreen(
     onDtmfStop: () -> Unit,
     onMessage: () -> Unit = {},
     bg: List<Color> = DefaultCallBg,
-    ending: Boolean = false
+    ending: Boolean = false,
+    other: CallUi? = null,
+    otherTitle: String = "",
+    canMerge: Boolean = false,
+    onSwap: () -> Unit = {},
+    onMerge: () -> Unit = {},
+    onHoldAnswer: () -> Unit = {},
+    onEndAnswer: () -> Unit = {}
 ) {
     val ringing = ui.state == TCall.STATE_RINGING
     val title = ui.displayName ?: info?.name ?: formatNumber(ui.number).ifBlank { "Bilinmeyen" }
@@ -217,6 +224,13 @@ fun InCallScreen(
                 maxLines = 2,
                 textAlign = TextAlign.Center
             )
+            if (other != null && !ringing && !showKeypad) {
+                Spacer(Modifier.height(14.dp))
+                OtherCallPill(
+                    label = (if (other.state == TCall.STATE_HOLDING) "Beklemede: " else "") + otherTitle,
+                    onClick = onSwap
+                )
+            }
             if (showKeypad) {
                 Spacer(Modifier.height(12.dp))
                 Text(
@@ -232,6 +246,15 @@ fun InCallScreen(
             Spacer(Modifier.weight(1f))
 
             when {
+                ringing && other != null -> {
+                    WaitingOption("Beklet ve Kabul Et", F7.PauseFill, glassStrong, onHoldAnswer)
+                    Spacer(Modifier.height(10.dp))
+                    WaitingOption("Bitir ve Kabul Et", F7.PhoneDownFill, endRed.copy(alpha = 0.85f), onEndAnswer)
+                    Spacer(Modifier.height(10.dp))
+                    WaitingOption("Reddet", F7.Xmark, glass, onReject)
+                    Spacer(Modifier.height(8.dp))
+                }
+
                 ringing -> {
                     Row(
                         modifier = Modifier
@@ -290,7 +313,11 @@ fun InCallScreen(
                             GridButton(F7.Speaker3Fill, "Hoparlör", active = audio.speaker, onClick = onSpeaker)
                         }
                         Cell {
-                            GridButton(F7.VideocamFill, "FaceTime", enabled = false, onClick = {})
+                            if (other != null) {
+                                GridButton(F7.PersonFill, "Birleştir", enabled = canMerge, onClick = onMerge)
+                            } else {
+                                GridButton(F7.VideocamFill, "FaceTime", enabled = false, onClick = {})
+                            }
                         }
                         Cell {
                             GridButton(
@@ -330,6 +357,44 @@ fun InCallScreen(
                 }
             )
         }
+    }
+}
+
+/** Aramalar arası geçiş: diğer çağrının adını gösteren küçük cam hap. */
+@Composable
+private fun OtherCallPill(label: String, onClick: () -> Unit) {
+    Row(
+        modifier = Modifier
+            .clip(CircleShape)
+            .background(glassStrong)
+            .border(BorderStroke(0.5.dp, Color.White.copy(alpha = 0.25f)), CircleShape)
+            .clickable(onClick = onClick)
+            .padding(horizontal = 16.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Icon(F7.PhoneFill, null, tint = Color.White, modifier = Modifier.size(14.dp))
+        Spacer(Modifier.width(8.dp))
+        Text(label, color = Color.White, fontSize = 15.sp, maxLines = 1, fontWeight = FontWeight.Medium)
+    }
+}
+
+/** Çağrı bekleme seçeneği: tam genişlik cam hap. */
+@Composable
+private fun WaitingOption(label: String, icon: ImageVector, color: Color, onClick: () -> Unit) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(56.dp)
+            .clip(CircleShape)
+            .background(color)
+            .border(BorderStroke(0.5.dp, Color.White.copy(alpha = 0.25f)), CircleShape)
+            .clickable(onClick = onClick),
+        horizontalArrangement = Arrangement.Center,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Icon(icon, null, tint = Color.White, modifier = Modifier.size(20.dp))
+        Spacer(Modifier.width(10.dp))
+        Text(label, color = Color.White, fontSize = 17.sp, fontWeight = FontWeight.Medium)
     }
 }
 

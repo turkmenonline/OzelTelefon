@@ -1,5 +1,13 @@
 package com.ozel.telefon.ui
 
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.ui.graphics.CompositingStrategy
+import androidx.compose.ui.graphics.BlendMode
+import androidx.compose.ui.draw.BlurredEdgeTreatment
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.draw.blur
+import androidx.compose.foundation.interaction.collectIsPressedAsState
+import androidx.compose.foundation.border
 import android.Manifest
 import android.content.Intent
 import android.content.pm.PackageManager
@@ -51,6 +59,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.SolidColor
@@ -110,6 +119,11 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
+/** Düzenleme açıkken alt çubuk gizlensin diye MainActivity'nin okuduğu durum. */
+object DetailState {
+    var editing by mutableStateOf(false)
+}
+
 data class DetailTarget(val number: String, val startEditing: Boolean = false)
 
 /** Kart açılmadan önce arka planda hazırlanan veri: kart kayarken içerik sonradan zıplamasın. */
@@ -153,6 +167,8 @@ fun ContactDetailScreen(
     var number by remember { mutableStateOf(target.number) }
     var refresh by remember { mutableIntStateOf(0) }
     var editing by remember { mutableStateOf(target.startEditing) }
+    LaunchedEffect(editing) { DetailState.editing = editing }
+    DisposableEffect(Unit) { onDispose { DetailState.editing = false } }
     var loaded by remember {
         mutableStateOf(initial?.let { Loaded(it.detail, it.history, it.accounts) })
     }
@@ -174,8 +190,6 @@ fun ContactDetailScreen(
     Box(
         Modifier
             .fillMaxSize()
-            // Görüntüleme modunda tab bar altta görünür kalır; düzenlemede tam ekran olur.
-            .padding(bottom = if (editing) 0.dp else tabBarHeight)
             .background(groupedBg)
             // boş alana dokunuşlar alttaki listeye geçmesin
             .pointerInput(Unit) { detectTapGestures { } }
@@ -209,6 +223,7 @@ fun ContactDetailScreen(
                 history = l?.history ?: emptyList(),
                 accounts = l?.accounts ?: emptyList(),
                 loading = l == null,
+                bottomInset = tabBarHeight,
                 photo = photo,
                 card = card,
                 onBack = onClose,
@@ -365,6 +380,72 @@ private fun TextRow(text: String, color: Color, onClick: () -> Unit) {
     )
 }
 
+/** iOS 26 kişi ekranındaki saydam cam kart: bulanık zeminin üstünde yarı saydam beyaz. */
+@Composable
+private fun GlassCardColumn(content: @Composable () -> Unit) {
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(24.dp))
+            .background(Color.White.copy(alpha = 0.16f))
+            .border(0.5.dp, Color.White.copy(alpha = 0.14f), RoundedCornerShape(24.dp))
+    ) { content() }
+}
+
+/** Etiketsiz yuvarlak cam eylem düğmesi (mesaj / ara / görüntülü / e-posta). */
+@Composable
+private fun RoundAction(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    label: String,
+    enabled: Boolean,
+    size: Dp,
+    onClick: () -> Unit
+) {
+    val src = remember { MutableInteractionSource() }
+    val pressed by src.collectIsPressedAsState()
+    val sc by pressScale(pressed, 0.9f)
+    val c = Color.White.copy(alpha = if (enabled) 1f else 0.4f)
+    Box(
+        Modifier
+            .graphicsLayer { scaleX = sc; scaleY = sc }
+            .size(size)
+            .clip(CircleShape)
+            .background(Color.White.copy(alpha = if (enabled) 0.24f else 0.14f))
+            .background(if (pressed) Color.White.copy(alpha = 0.18f) else Color.Transparent)
+            .border(0.5.dp, Color.White.copy(alpha = 0.25f), CircleShape)
+            .clickable(interactionSource = src, indication = null, enabled = enabled, onClick = onClick),
+        contentAlignment = Alignment.Center
+    ) {
+        Icon(icon, contentDescription = label, tint = c, modifier = Modifier.size(size * 0.38f))
+    }
+}
+
+@Composable
+private fun RoundActionRow(
+    size: Dp,
+    gap: Dp,
+    canCall: Boolean,
+    onMessage: () -> Unit,
+    onCall: () -> Unit,
+    onVideo: () -> Unit
+) {
+    Row(horizontalArrangement = Arrangement.spacedBy(gap), verticalAlignment = Alignment.CenterVertically) {
+        RoundAction(F7.BubbleLeftFill, "mesaj", canCall, size, onMessage)
+        RoundAction(F7.PhoneFill, "ara", canCall, size, onCall)
+        RoundAction(F7.VideocamFill, "görüntülü", true, size, onVideo)
+        RoundAction(F7.EnvelopeFill, "e-posta", false, size) { }
+    }
+}
+
+private val detailPalette = listOf(
+    listOf(Color(0xFF8A6BB5), Color(0xFF3F3070)),
+    listOf(Color(0xFF4F7F7C), Color(0xFF07525A)),
+    listOf(Color(0xFF5C74B8), Color(0xFF26346B)),
+    listOf(Color(0xFFB8647A), Color(0xFF63263F)),
+    listOf(Color(0xFFB58A55), Color(0xFF5F3F1C)),
+    listOf(Color(0xFF5F9B6A), Color(0xFF1F4A31))
+)
+
 @Composable
 private fun ViewMode(
     number: String,
@@ -372,6 +453,7 @@ private fun ViewMode(
     history: List<HistoryEntry>,
     accounts: List<LinkedAccount>,
     loading: Boolean,
+    bottomInset: Dp,
     photo: ImageBitmap?,
     card: Color,
     onBack: () -> Unit,
@@ -380,8 +462,10 @@ private fun ViewMode(
 ) {
     val context = LocalContext.current
     val density = LocalDensity.current
-    val onBg = MaterialTheme.colorScheme.onBackground
-    val dividerColor = MaterialTheme.colorScheme.surfaceVariant
+    // iOS 26: bulanık fotoğraf zemininde yazılar beyaz (mavi değil), ayraçlar yarı saydam beyaz.
+    val onBg = Color.White
+    val dividerColor = Color.White.copy(alpha = 0.18f)
+    val subText = Color.White.copy(alpha = 0.62f)
 
     val name = detail?.name?.takeIf { it.isNotBlank() }
         ?: peekContact(number)?.name
@@ -428,20 +512,37 @@ private fun ViewMode(
     val screenW = LocalConfiguration.current.screenWidthDp.dp
     val headerH = screenW * 1.38f
     val statusTop = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
-    val pinnedH = statusTop + 152.dp
-    val startPx = with(density) { (headerH - pinnedH - 34.dp).toPx() }
-    val fadePx = with(density) { 34.dp.toPx() }
-    val nameFadeStart = with(density) { (headerH - pinnedH - 200.dp).toPx() }
+    // Hero düğmeleri üst çubuğun altına gelince küçük düğmeler sabitlenir.
+    // Büyük düğmeler küçüklerin yerine geldiği anda biri solar, öbürü belirir (üst üste binmesin).
+    val pinnedBottom = statusTop + 48.dp + 52.dp
+    val startPx = with(density) { (headerH - 10.dp - 64.dp - (statusTop + 52.dp)).toPx().coerceAtLeast(1f) }
+    val fadePx = with(density) { 36.dp.toPx() }
+    val nameFadeStart = with(density) { (headerH - pinnedBottom - 150.dp).toPx() }
     val nameFadeLen = with(density) { 70.dp.toPx() }
     val pinnedAlpha by remember(startPx, fadePx) {
         derivedStateOf { ((scroll.value - startPx) / fadePx).coerceIn(0f, 1f) }
     }
     val showPinned by remember(startPx) { derivedStateOf { scroll.value > startPx } }
-    val tint by produceState(Color(0xFF8A8D96), photo) {
-        value = withContext(Dispatchers.Default) { averageColor(photo) }
+    val pal = remember(name) { detailPalette[Math.floorMod(name.hashCode(), detailPalette.size)] }
+    // Açılış animasyonu: fotoğraf hafif yakından oturur, kartlar aşağıdan yükselip belirir.
+    val enter = remember { androidx.compose.animation.core.Animatable(0f) }
+    LaunchedEffect(Unit) {
+        enter.animateTo(1f, androidx.compose.animation.core.spring(dampingRatio = 0.85f, stiffness = 170f))
     }
 
     Box(Modifier.fillMaxSize()) {
+        // Sabit zemin: fotoğrafın bulanık, karartılmış hâli (fotoğraf yoksa isme göre renk geçişi).
+        if (photo != null) {
+            Image(
+                bitmap = photo,
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize().blur(40.dp, BlurredEdgeTreatment.Unbounded)
+            )
+            Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.42f)))
+        } else {
+            Box(Modifier.fillMaxSize().background(Brush.verticalGradient(pal)))
+        }
         Column(
             Modifier
                 .fillMaxSize()
@@ -452,34 +553,45 @@ private fun ViewMode(
                 Modifier
                     .fillMaxWidth()
                     .height(headerH)
+                    .clipToBounds()
             ) {
-                if (photo != null) {
-                    Image(
-                        bitmap = photo,
-                        contentDescription = null,
-                        contentScale = ContentScale.Crop,
-                        modifier = Modifier.fillMaxSize()
-                    )
-                } else {
-                    Box(
-                        Modifier
-                            .fillMaxSize()
-                            .background(Brush.verticalGradient(listOf(Color(0xFF9EA2AD), Color(0xFF6F737D)))),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(
-                            initialsOf(name) ?: "",
-                            fontSize = 96.sp,
-                            fontWeight = FontWeight.Light,
-                            color = Color.White.copy(alpha = 0.85f)
-                        )
-                    }
-                }
+                // Fotoğraf alta doğru solup bulanık zemine karışır. Kayarken yarı hızda kayar (paralaks).
                 Box(
                     Modifier
                         .fillMaxSize()
-                        .background(Brush.verticalGradient(0.55f to Color.Transparent, 1f to Color.Black.copy(alpha = 0.6f)))
-                )
+                        .graphicsLayer {
+                            compositingStrategy = CompositingStrategy.Offscreen
+                            translationY = scroll.value * 0.35f
+                            val z = 1.08f - 0.08f * enter.value + (scroll.value / headerH.toPx()).coerceIn(0f, 1f) * 0.06f
+                            scaleX = z
+                            scaleY = z
+                        }
+                        .drawWithContent {
+                            drawContent()
+                            drawRect(
+                                Brush.verticalGradient(0.72f to Color.Black, 1f to Color.Transparent),
+                                blendMode = BlendMode.DstIn
+                            )
+                        }
+                ) {
+                    if (photo != null) {
+                        Image(
+                            bitmap = photo,
+                            contentDescription = null,
+                            contentScale = ContentScale.Crop,
+                            modifier = Modifier.fillMaxSize()
+                        )
+                    }
+                }
+                if (photo == null) {
+                    Text(
+                        initialsOf(name) ?: "",
+                        fontSize = 96.sp,
+                        fontWeight = FontWeight.Light,
+                        color = Color.White.copy(alpha = 0.85f),
+                        modifier = Modifier.align(Alignment.Center)
+                    )
+                }
                 Column(
                     Modifier
                         .align(Alignment.BottomCenter)
@@ -489,8 +601,8 @@ private fun ViewMode(
                 ) {
                     Text(
                         name,
-                        fontSize = 34.sp,
-                        fontWeight = FontWeight.Medium,
+                        fontSize = 36.sp,
+                        fontWeight = FontWeight.SemiBold,
                         color = Color.White,
                         textAlign = TextAlign.Center,
                         maxLines = 2,
@@ -498,11 +610,17 @@ private fun ViewMode(
                         modifier = Modifier
                             .padding(horizontal = 24.dp)
                             .graphicsLayer {
-                                alpha = 1f - ((scroll.value - nameFadeStart) / nameFadeLen).coerceIn(0f, 1f)
+                                val f = ((scroll.value - nameFadeStart) / nameFadeLen).coerceIn(0f, 1f)
+                                alpha = 1f - f
+                                scaleX = 1f - 0.12f * f
+                                scaleY = 1f - 0.12f * f
+                                translationY = -f * 12.dp.toPx()
                             }
                     )
-                    Spacer(Modifier.height(14.dp))
-                    ActionRow(first != null, { message() }, { call() }, { video() })
+                    Spacer(Modifier.height(16.dp))
+                    Box(Modifier.graphicsLayer { alpha = 1f - pinnedAlpha }) {
+                        RoundActionRow(64.dp, 14.dp, first != null, { message() }, { call() }, { video() })
+                    }
                 }
             }
 
@@ -510,14 +628,18 @@ private fun ViewMode(
             Column(
                 Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 8.dp),
-                verticalArrangement = Arrangement.spacedBy(16.dp)
+                    .graphicsLayer {
+                        alpha = enter.value
+                        translationY = (1f - enter.value) * 48.dp.toPx()
+                    }
+                    .padding(horizontal = 14.dp),
+                verticalArrangement = Arrangement.spacedBy(14.dp)
             ) {
                 Spacer(Modifier.height(0.dp))
 
                 if (history.isNotEmpty()) {
                     val groups = remember(history, today) { history.groupBy { dayLabel(it.date, today) }.toList() }
-                    CardColumn(card) {
+                    GlassCardColumn() {
                         Spacer(Modifier.height(4.dp))
                         groups.forEach { (label, entries) ->
                             Text(
@@ -545,9 +667,9 @@ private fun ViewMode(
                                             typeLabel(e),
                                             fontSize = 14.sp,
                                             fontWeight = FontWeight.SemiBold,
-                                            color = if (e.type == CallLog.Calls.MISSED_TYPE) IOS.Red else onBg
+                                            color = if (e.type == CallLog.Calls.MISSED_TYPE) Color(0xFFFF8F8F) else onBg
                                         )
-                                        durationText(e)?.let { Text(it, fontSize = 13.sp, color = IOS.Gray) }
+                                        durationText(e)?.let { Text(it, fontSize = 13.sp, color = subText) }
                                     }
                                 }
                             }
@@ -559,20 +681,22 @@ private fun ViewMode(
                 Row(
                     Modifier
                         .fillMaxWidth()
-                        .clip(RoundedCornerShape(14.dp))
-                        .background(card)
+                        .clip(RoundedCornerShape(24.dp))
+                        .background(Color.White.copy(alpha = 0.16f))
+                        .border(0.5.dp, Color.White.copy(alpha = 0.14f), RoundedCornerShape(24.dp))
                         .iosClickable(onClick = onEdit)
                         .padding(horizontal = 12.dp, vertical = 10.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     BigAvatar(photo, name, 38.dp)
                     Spacer(Modifier.width(12.dp))
-                    Text("Kişi Fotoğrafı ve Poster", fontSize = 17.sp, color = onBg)
+                    Text("Kişi Fotoğrafı ve Poster", fontSize = 17.sp, color = onBg, modifier = Modifier.weight(1f))
+                    Icon(F7.ChevronRight, null, tint = subText, modifier = Modifier.size(20.dp))
                 }
 
                 // Numaralar
                 if (phones.isNotEmpty()) {
-                    CardColumn(card) {
+                    GlassCardColumn() {
                         phones.forEachIndexed { i, p ->
                             Column(
                                 Modifier
@@ -587,7 +711,7 @@ private fun ViewMode(
                                         Text(
                                             "SON KULLANILAN",
                                             fontSize = 8.sp,
-                                            color = IOS.Gray,
+                                            color = subText,
                                             modifier = Modifier
                                                 .clip(RoundedCornerShape(4.dp))
                                                 .background(dividerColor)
@@ -595,7 +719,7 @@ private fun ViewMode(
                                         )
                                     }
                                 }
-                                Text(formatTr(p.number), fontSize = 17.sp, color = IOS.Blue)
+                                Text(formatTr(p.number), fontSize = 17.sp, color = Color.White)
                             }
                             if (i < phones.lastIndex) {
                                 HorizontalDivider(
@@ -609,7 +733,7 @@ private fun ViewMode(
                 }
 
                 // Notlar
-                CardColumn(card) {
+                GlassCardColumn() {
                     Box(
                         Modifier
                             .fillMaxWidth()
@@ -625,20 +749,20 @@ private fun ViewMode(
                 }
 
                 if (!loading && detail == null && number.isNotBlank()) {
-                    CardColumn(card) { TextRow("Yeni Kişi Oluştur", IOS.Blue, onEdit) }
+                    GlassCardColumn() { TextRow("Yeni Kişi Oluştur", Color.White, onEdit) }
                 }
 
                 // Mesaj / Paylaş / Hızlı Arama
                 if (first != null) {
-                    CardColumn(card) {
-                        TextRow("Mesaj Gönder", IOS.Blue) { message() }
+                    GlassCardColumn() {
+                        TextRow("Mesaj Gönder", Color.White) { message() }
                         HorizontalDivider(modifier = Modifier.padding(start = 16.dp), thickness = 0.5.dp, color = dividerColor)
-                        TextRow("Kişiyi Paylaş", IOS.Blue) { shareContact(context, name, first) }
+                        TextRow("Kişiyi Paylaş", Color.White) { shareContact(context, name, first) }
                         HorizontalDivider(modifier = Modifier.padding(start = 16.dp), thickness = 0.5.dp, color = dividerColor)
-                        TextRow("Hızlı Aramaya Ekle", IOS.Blue) { star() }
+                        TextRow("Hızlı Aramaya Ekle", Color.White) { star() }
                     }
-                    CardColumn(card) {
-                        TextRow("Acil Durum Kişileri'ne Ekle", IOS.Blue) {
+                    GlassCardColumn() {
+                        TextRow("Acil Durum Kişileri'ne Ekle", Color.White) {
                             Toast.makeText(
                                 context,
                                 "Acil durum kişileri telefonun güvenlik ayarlarından eklenir",
@@ -646,8 +770,8 @@ private fun ViewMode(
                             ).show()
                         }
                     }
-                    CardColumn(card) {
-                        TextRow("Arayanı Engelle", IOS.Red) {
+                    GlassCardColumn() {
+                        TextRow("Kişiyi Engelle", Color.White) {
                             val ok = blockNumber(context, first)
                             Toast.makeText(
                                 context,
@@ -664,10 +788,10 @@ private fun ViewMode(
                         Text(
                             "BAĞLI KİŞİLER",
                             fontSize = 13.sp,
-                            color = IOS.Gray,
+                            color = subText,
                             modifier = Modifier.padding(start = 16.dp, bottom = 6.dp)
                         )
-                        CardColumn(card) {
+                        GlassCardColumn() {
                             accounts.forEachIndexed { i, a ->
                                 Row(
                                     Modifier
@@ -677,9 +801,9 @@ private fun ViewMode(
                                 ) {
                                     Column(Modifier.weight(1f)) {
                                         Text(a.label, fontSize = 15.sp, color = onBg)
-                                        Text(a.name, fontSize = 15.sp, color = IOS.Blue)
+                                        Text(a.name, fontSize = 15.sp, color = Color.White)
                                     }
-                                    Icon(F7.ChevronRight, null, tint = IOS.Gray, modifier = Modifier.size(20.dp))
+                                    Icon(F7.ChevronRight, null, tint = subText, modifier = Modifier.size(20.dp))
                                 }
                                 if (i < accounts.lastIndex) {
                                     HorizontalDivider(
@@ -692,26 +816,28 @@ private fun ViewMode(
                         }
                     }
                 }
-                Spacer(Modifier.height(24.dp))
+                Spacer(Modifier.height(24.dp + bottomInset))
             }
         }
 
-        // ── Kayınca sabitlenen küçük başlık (fotoğrafın ortalama renginde) ──
+        // ── Kayınca üstte sabitlenen küçük eylem düğmeleri ──
         if (showPinned) {
-            Column(
+            Box(
                 Modifier
                     .fillMaxWidth()
                     .graphicsLayer { alpha = pinnedAlpha }
-                    .background(tint.copy(alpha = 0.97f))
+                    .background(
+                        Brush.verticalGradient(
+                            0f to Color.Black.copy(alpha = 0.9f),
+                            0.72f to Color.Black.copy(alpha = 0.75f),
+                            1f to Color.Transparent
+                        )
+                    )
                     .statusBarsPadding()
-                    .padding(top = 6.dp, bottom = 8.dp),
-                horizontalAlignment = Alignment.CenterHorizontally
+                    .padding(top = 52.dp, bottom = 30.dp),
+                contentAlignment = Alignment.Center
             ) {
-                BigAvatar(photo, name, 40.dp)
-                Spacer(Modifier.height(2.dp))
-                Text(name, fontSize = 13.sp, color = Color.White, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                Spacer(Modifier.height(10.dp))
-                ActionRow(first != null, { message() }, { call() }, { video() })
+                RoundActionRow(44.dp, 12.dp, first != null, { message() }, { call() }, { video() })
             }
         }
 
@@ -802,12 +928,15 @@ private fun EditMode(
 
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
         if (uri != null) {
-            val bmp = decodeSquareBitmap(context, uri)
-            if (bmp != null) {
-                pendingPhoto = bmp
-                removePhoto = false
-            } else {
-                Toast.makeText(context, "Fotoğraf açılamadı", Toast.LENGTH_SHORT).show()
+            // Büyük galeri fotoğrafları ana iş parçacığında çözülürse arayüz donar; IO'ya taşındı.
+            scope.launch {
+                val bmp = withContext(Dispatchers.IO) { decodeSquareBitmap(context, uri) }
+                if (bmp != null) {
+                    pendingPhoto = bmp
+                    removePhoto = false
+                } else {
+                    Toast.makeText(context, "Fotoğraf açılamadı", Toast.LENGTH_SHORT).show()
+                }
             }
         }
     }

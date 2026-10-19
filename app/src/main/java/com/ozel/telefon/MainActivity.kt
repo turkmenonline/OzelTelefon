@@ -1,12 +1,14 @@
 package com.ozel.telefon
 
+import com.ozel.telefon.ui.DetailState
+import com.ozel.telefon.ui.SearchMode
+import androidx.activity.compose.BackHandler
 import com.ozel.telefon.ui.LocalBottomBarInset
 import com.ozel.telefon.ui.LocalBackdrop
 import androidx.compose.ui.graphics.rememberGraphicsLayer
 import androidx.compose.ui.graphics.layer.drawLayer
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.runtime.CompositionLocalProvider
-import androidx.compose.animation.Crossfade
 import com.ozel.telefon.ui.F7
 
 import android.Manifest
@@ -15,10 +17,12 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.database.ContentObserver
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.os.PowerManager
 import android.provider.CallLog
 import android.provider.ContactsContract
 import android.provider.Settings
@@ -153,7 +157,11 @@ private fun coreGranted(context: Context): Boolean =
 private fun isDefaultDialer(context: Context): Boolean =
     context.getSystemService(TelecomManager::class.java).defaultDialerPackage == context.packageName
 
-private val tabLabels = listOf("Aramalar", "Kişiler", "Tuş Takımı")
+/** Samsung / OneUI gibi agresif pil yönetimleri servisi öldürüp aramaları kaçırmasın diye. */
+private fun isIgnoringBatteryOptimizations(context: Context): Boolean =
+    context.getSystemService(PowerManager::class.java).isIgnoringBatteryOptimizations(context.packageName)
+
+private val tabLabels = listOf("Aramalar", "Kişiler", "Klavye")
 private val tabIcons = listOf(F7.ClockFill, F7.PersonCropCircleFill, F7.CircleGrid3x3Fill)
 
 private const val KEYPAD_TAB = 2
@@ -195,6 +203,28 @@ fun AppRoot(initialNumber: String) {
         isDefault = isDefaultDialer(context)
         // Sistem penceresi çıkmadıysa / reddedildiyse ayarlara yönlendir.
         if (!isDefault) openDefaultAppsSettings()
+    }
+
+    // Pil optimizasyonundan muaf mıyız? Yalnız varsayılan uygulama olduğumuzda anlamlı;
+    // aksi halde sistem zaten aramaları kendi dialer'ına yönlendirir.
+    var ignoringBattery by remember { mutableStateOf(isIgnoringBatteryOptimizations(context)) }
+    LaunchedEffect(resume) { ignoringBattery = isIgnoringBatteryOptimizations(context) }
+    val batteryLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) { ignoringBattery = isIgnoringBatteryOptimizations(context) }
+    fun requestIgnoreBatteryOptimizations() {
+        try {
+            batteryLauncher.launch(
+                Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS)
+                    .setData(Uri.parse("package:${context.packageName}"))
+            )
+        } catch (e: Exception) {
+            try {
+                context.startActivity(Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS))
+            } catch (e2: Exception) {
+                // bazı OEM'lerde bu ayar sayfası da yok; sessizce geç
+            }
+        }
     }
 
     var tab by rememberSaveable { mutableIntStateOf(RECENTS_TAB) }
@@ -286,49 +316,29 @@ fun AppRoot(initialNumber: String) {
     val contactsState = rememberLazyListState()
     val tabScope = rememberCoroutineScope()
     val backdropLayer = rememberGraphicsLayer()
+    BackHandler(enabled = SearchMode.active) { SearchMode.close() }
 
     Box(Modifier.fillMaxSize()) {
     Box(Modifier.fillMaxSize().blur(blurRadius)) {
+    // Arka plan katmanı: liste + kişi kartı birlikte kaydedilir; alt çubuk ikisinin de bulanığını gösterir.
+    Box(
+        Modifier
+            .fillMaxSize()
+            .drawWithContent {
+                backdropLayer.record { this@drawWithContent.drawContent() }
+                drawLayer(backdropLayer)
+            }
+    ) {
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
-        bottomBar = {
-          CompositionLocalProvider(LocalBackdrop provides backdropLayer) {
-            GlassTabBar(
-                labels = tabLabels,
-                icons = tabIcons,
-                selected = tab,
-                onSelect = { i ->
-                    if (tab == i && detail == null) {
-                        when (i) {
-                            0 -> tabScope.launch { recentsState.animateScrollToItem(0) }
-                            1 -> tabScope.launch { contactsState.animateScrollToItem(0) }
-                        }
-                    }
-                    tab = i
-                    detail = null
-                },
-                onSearch = {
-                    tab = 1
-                    detail = null
-                },
-                modifier = Modifier.navigationBarsPadding()
-            )
-          }
-        }
+        bottomBar = {}
     ) { padding ->
       // İçerik alt çubuğun ALTINDAN da geçer (liste çubuğun arkasında kayar); arkası bulanık görünür.
       CompositionLocalProvider(
           LocalBackdrop provides backdropLayer,
-          LocalBottomBarInset provides padding.calculateBottomPadding()
+          LocalBottomBarInset provides tabBarHeight
       ) {
-      Box(
-          Modifier
-              .fillMaxSize()
-              .drawWithContent {
-                  backdropLayer.record { this@drawWithContent.drawContent() }
-                  drawLayer(backdropLayer)
-              }
-      ) {
+      Box(Modifier.fillMaxSize()) {
         Column(
             Modifier
                 .fillMaxSize()
@@ -363,26 +373,47 @@ fun AppRoot(initialNumber: String) {
                         fontSize = 12.sp
                     )
                 }
-            }
-            // iOS 26: sekme geçişi ~0,28 sn çapraz solma.
-            Crossfade(targetState = tab, animationSpec = tween(280), label = "tabs") { t ->
-                when (t) {
-                    0 -> RecentsScreen(
-                        hasPerms,
-                        recentsState,
-                        call,
-                        onInfo = { detail = DetailTarget(it) },
-                        onMenu = { menuTarget = it }
+            } else if (!ignoringBattery) {
+                // Varsayılan uygulama olduk; şimdi Samsung'un pil yönetimi servisi öldürmesin
+                // diye muafiyet isteniyor, yoksa gelen aramalar arka planda kaçabilir.
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(IOS.Blue)
+                        .clickable { requestIgnoreBatteryOptimizations() }
+                        .padding(horizontal = 16.dp, vertical = 10.dp)
+                ) {
+                    Text(
+                        "Arka planda çalışmaya izin ver",
+                        color = Color.White,
+                        fontSize = 16.sp
                     )
-                    1 -> ContactsScreen(
-                        hasPerms,
-                        contactsState,
-                        call,
-                        onOpen = { detail = DetailTarget(it) },
-                        onAdd = { detail = DetailTarget("", startEditing = true) }
+                    Text(
+                        "Pil tasarrufu kapatılmazsa gelen aramalar gecikebilir ya da kaçabilir.",
+                        color = Color.White.copy(alpha = 0.85f),
+                        fontSize = 12.sp
                     )
-                    else -> DialerScreen(initialNumber, call)
                 }
+            }
+            // iOS: alt sekmeye basınca içerik ANINDA değişir, çapraz solma yok.
+            // Crossfade iki ekranın metnini üst üste bindirip "hayalet" görüntü veriyordu;
+            // gerçek iPhone'da sekme geçişinde böyle bir animasyon zaten yok.
+            when (tab) {
+                0 -> RecentsScreen(
+                    hasPerms,
+                    recentsState,
+                    call,
+                    onInfo = { detail = DetailTarget(it) },
+                    onMenu = { menuTarget = it }
+                )
+                1 -> ContactsScreen(
+                    hasPerms,
+                    contactsState,
+                    call,
+                    onOpen = { detail = DetailTarget(it) },
+                    onAdd = { detail = DetailTarget("", startEditing = true) }
+                )
+                else -> DialerScreen(initialNumber, call)
             }
         }
       }
@@ -394,7 +425,6 @@ fun AppRoot(initialNumber: String) {
         Box(
             Modifier
                 .fillMaxSize()
-                .padding(bottom = tabBarHeight)
                 .graphicsLayer { alpha = pushProgress.value * 0.2f }
                 .background(Color.Black)
         )
@@ -415,6 +445,35 @@ fun AppRoot(initialNumber: String) {
                     }
                 )
             }
+        }
+    }
+    }
+    // Alt çubuk kişi kartının da üstünde durur (iOS gibi); kişi düzenlenirken gizlenir.
+    if (!(shownDetail != null && DetailState.editing)) {
+        CompositionLocalProvider(LocalBackdrop provides backdropLayer) {
+            GlassTabBar(
+                labels = tabLabels,
+                icons = tabIcons,
+                selected = tab,
+                onSelect = { i ->
+                    SearchMode.close()
+                    if (tab == i && detail == null) {
+                        when (i) {
+                            0 -> tabScope.launch { recentsState.animateScrollToItem(0) }
+                            1 -> tabScope.launch { contactsState.animateScrollToItem(0) }
+                        }
+                    }
+                    tab = i
+                    detail = null
+                },
+                onSearch = {
+                    // Klavye sekmesinde arama rehberi arar; diğerlerinde bulunulan listeyi süzer.
+                    if (tab == 2) tab = 1
+                    detail = null
+                    SearchMode.open()
+                },
+                modifier = Modifier.align(Alignment.BottomCenter).navigationBarsPadding()
+            )
         }
     }
     }

@@ -1,5 +1,24 @@
 package com.ozel.telefon.ui
 
+import androidx.compose.animation.core.Animatable
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalDensity
+import kotlinx.coroutines.launch
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.graphics.TransformOrigin
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.LaunchedEffect
 import kotlin.math.roundToInt
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.graphics.graphicsLayer
@@ -60,7 +79,7 @@ fun glassBorderColor(): Color =
  * Seçili sekmenin arkasında yumuşak bir hap vurgusu olur.
  */
 @Composable
-fun GlassTabBar(
+private fun TabBarRow(
     labels: List<String>,
     icons: List<ImageVector>,
     selected: Int,
@@ -73,11 +92,22 @@ fun GlassTabBar(
     val shadowColor = Color(0x26000000)
     val highlight = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.08f)
 
-    val pill by animateFloatAsState(
-        selected.toFloat(),
-        spring(dampingRatio = 0.72f, stiffness = 380f),
-        label = "pill"
+    var anyPressed by remember { mutableStateOf(false) }
+    var dragging by remember { mutableStateOf(false) }
+    val lens by animateFloatAsState(
+        if (anyPressed || dragging) 1f else 0f,
+        spring(dampingRatio = 0.6f, stiffness = 500f),
+        label = "lens"
     )
+    // Hap konumu (sekme biriminde). Parmakla sürüklenir, bırakınca en yakın sekmeye yaylanır.
+    val pillAnim = remember { Animatable(selected.toFloat()) }
+    val pillSpring = spring<Float>(dampingRatio = 0.72f, stiffness = 380f)
+    LaunchedEffect(selected) { if (!dragging) pillAnim.animateTo(selected.toFloat(), pillSpring) }
+    val pill = pillAnim.value
+    val scope = rememberCoroutineScope()
+    val currentSelect by rememberUpdatedState(onSelect)
+    val currentSelected by rememberUpdatedState(selected)
+    val nearest = pill.roundToInt().coerceIn(0, labels.size - 1)
     val searchSrc = remember { MutableInteractionSource() }
     val searchPressed by searchSrc.collectIsPressedAsState()
     val searchScale by pressScale(searchPressed, 0.9f)
@@ -102,18 +132,47 @@ fun GlassTabBar(
                 .padding(4.dp)
         ) {
             val tabW = maxWidth / labels.size
-            // Seçili hap sekmeler arasında yaylı kayar (iOS 26 cam çubuk).
+            val tabPx = with(LocalDensity.current) { tabW.toPx() }
+            // Seçili hap sekmeler arasında yaylı kayar. Giderken uzar, basılıyken büyür ("lens" etkisi).
             Box(
                 Modifier
                     .offset { IntOffset((pill * tabW.toPx()).roundToInt(), 0) }
                     .width(tabW)
                     .fillMaxHeight()
+                    .graphicsLayer {
+                        val moving = if (dragging) 0f else kotlin.math.abs(pill - selected).coerceIn(0f, 1.5f)
+                        scaleX = 1f + 0.28f * moving + 0.12f * lens
+                        scaleY = 1f + 0.06f * moving + 0.10f * lens
+                    }
                     .clip(RoundedCornerShape(27.dp))
                     .background(highlight)
             )
-            Row(Modifier.fillMaxSize()) {
+            Row(
+                Modifier
+                    .fillMaxSize()
+                    .pointerInput(tabPx, labels.size) {
+                        val last = (labels.size - 1).toFloat()
+                        fun finish() {
+                            dragging = false
+                            val target = pillAnim.value.roundToInt().coerceIn(0, labels.size - 1)
+                            scope.launch { pillAnim.animateTo(target.toFloat(), pillSpring) }
+                            if (target != currentSelected) currentSelect(target)
+                        }
+                        detectHorizontalDragGestures(
+                            onDragStart = { dragging = true },
+                            onDragEnd = { finish() },
+                            onDragCancel = { finish() },
+                            onHorizontalDrag = { change, dx ->
+                                change.consume()
+                                scope.launch {
+                                    pillAnim.snapTo((pillAnim.value + dx / tabPx).coerceIn(0f, last))
+                                }
+                            }
+                        )
+                    }
+            ) {
                 labels.forEachIndexed { i, label ->
-                    val active = i == selected
+                    val active = i == (if (dragging) nearest else selected)
                     val tint by animateColorAsState(
                         if (active) IOS.Blue else MaterialTheme.colorScheme.onBackground,
                         tween(180),
@@ -121,7 +180,8 @@ fun GlassTabBar(
                     )
                     val src = remember { MutableInteractionSource() }
                     val pressed by src.collectIsPressedAsState()
-                    val sc by pressScale(pressed, 0.9f)
+                    val sc by pressScale(pressed, 1.1f)
+                    LaunchedEffect(pressed) { anyPressed = pressed }
                     Column(
                         modifier = Modifier
                             .weight(1f)
@@ -165,6 +225,115 @@ fun GlassTabBar(
                 tint = MaterialTheme.colorScheme.onBackground,
                 modifier = Modifier.size(26.dp)
             )
+        }
+    }
+}
+
+/** Arama modu: alttaki büyüteç düğmesi açar; Aramalar ve Kişiler listeleri buradaki metne göre süzülür. */
+object SearchMode {
+    var active by mutableStateOf(false)
+    var query by mutableStateOf("")
+    fun open() { active = true }
+    fun close() { active = false; query = "" }
+}
+
+/**
+ * Alt çubuk: normalde sekmeler, arama modunda arama alanı + kapat düğmesi (iOS 26).
+ * Geçişte sekme hapı sola doğru küçülüp solar, arama alanı sağdaki büyüteçten yayılarak açılır.
+ */
+@Composable
+fun GlassTabBar(
+    labels: List<String>,
+    icons: List<ImageVector>,
+    selected: Int,
+    onSelect: (Int) -> Unit,
+    onSearch: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val active = SearchMode.active
+    val t = remember { Animatable(if (active) 1f else 0f) }
+    LaunchedEffect(active) {
+        t.animateTo(if (active) 1f else 0f, spring(dampingRatio = 0.8f, stiffness = 320f))
+    }
+    val v = t.value
+    Box(
+        modifier = if (active) modifier.imePadding() else modifier,
+        contentAlignment = Alignment.BottomCenter
+    ) {
+        if (v < 0.99f) {
+            Box(
+                Modifier.graphicsLayer {
+                    alpha = (1f - v * 1.8f).coerceIn(0f, 1f)
+                    scaleX = 1f - 0.3f * v
+                    scaleY = 1f - 0.1f * v
+                    transformOrigin = TransformOrigin(0f, 0.5f)
+                }
+            ) {
+                TabBarRow(labels, icons, selected, onSelect, onSearch, Modifier)
+            }
+        }
+        if (active || v > 0.01f) {
+            Box(
+                Modifier.graphicsLayer {
+                    alpha = ((v - 0.15f) * 1.6f).coerceIn(0f, 1f)
+                    scaleX = 0.45f + 0.55f * v
+                    scaleY = 0.85f + 0.15f * v
+                    transformOrigin = TransformOrigin(1f, 0.5f)
+                }
+            ) {
+                SearchBottomBar(Modifier, active)
+            }
+        }
+    }
+}
+
+@Composable
+private fun SearchBottomBar(modifier: Modifier, active: Boolean) {
+    val glass = glassTint()
+    val border = glassBorderColor()
+    val shadowColor = Color(0x26000000)
+    val fg = MaterialTheme.colorScheme.onBackground
+    val focus = remember { FocusRequester() }
+    val focusManager = LocalFocusManager.current
+    LaunchedEffect(active) {
+        if (active) focus.requestFocus() else focusManager.clearFocus()
+    }
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(start = 16.dp, end = 16.dp, top = 6.dp, bottom = 8.dp),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Row(
+            modifier = Modifier
+                .weight(1f)
+                .height(52.dp)
+                .shadow(10.dp, CircleShape, ambientColor = shadowColor, spotColor = shadowColor)
+                .clip(CircleShape)
+                .glassBackdrop()
+                .background(glass)
+                .border(BorderStroke(0.5.dp, border), CircleShape)
+                .padding(horizontal = 16.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(F7.Search, null, tint = IOS.Gray, modifier = Modifier.size(20.dp))
+            Spacer(Modifier.width(8.dp))
+            Box(Modifier.weight(1f), contentAlignment = Alignment.CenterStart) {
+                if (SearchMode.query.isEmpty()) Text("Ara", color = IOS.Gray, fontSize = 17.sp)
+                BasicTextField(
+                    value = SearchMode.query,
+                    onValueChange = { SearchMode.query = it },
+                    singleLine = true,
+                    textStyle = TextStyle(color = fg, fontSize = 17.sp),
+                    cursorBrush = SolidColor(IOS.Blue),
+                    modifier = Modifier.fillMaxWidth().focusRequester(focus)
+                )
+            }
+            Icon(F7.MicFill, null, tint = IOS.Gray, modifier = Modifier.size(18.dp))
+        }
+        GlassCircleButton(onClick = { SearchMode.close() }, size = 52.dp) {
+            Icon(F7.Xmark, "Kapat", tint = fg, modifier = Modifier.size(18.dp))
         }
     }
 }

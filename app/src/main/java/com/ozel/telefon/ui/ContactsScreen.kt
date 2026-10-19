@@ -113,7 +113,7 @@ fun ContactsScreen(
     onOpen: (String) -> Unit,
     onAdd: () -> Unit
 ) {
-    var query by remember { mutableStateOf("") }
+    val query = SearchMode.query
 
     // Veri ListData'da tutulur; sekme değişince rehber yeniden okunup sıralanmaz.
     val all = ListData.contacts
@@ -129,7 +129,7 @@ fun ContactsScreen(
     }
 
     val showCard = profile != null && query.isBlank()
-    val base = if (showCard) 3 else 2
+    val base = if (showCard) 1 else 0
     val starts = remember(grouped, base) {
         val map = LinkedHashMap<String, Int>()
         var idx = base
@@ -143,48 +143,10 @@ fun ContactsScreen(
     val scope = rememberCoroutineScope()
     val dividerColor = MaterialTheme.colorScheme.surfaceVariant
 
-    Box(Modifier.fillMaxSize()) {
+    Column(Modifier.fillMaxSize()) {
+    ContactsHeader(onAdd)
+    Box(Modifier.weight(1f)) {
         LazyColumn(state = listState, contentPadding = PaddingValues(bottom = 16.dp + LocalBottomBarInset.current)) {
-            item(key = "header", contentType = "header") {
-                Column {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(start = 2.dp, end = 14.dp, top = 8.dp, bottom = 8.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        // iOS'taki "‹ Listeler" (liste/grup özelliği yok; görünüm için)
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(
-                                F7.ChevronLeft,
-                                contentDescription = null,
-                                tint = IOS.Blue,
-                                modifier = Modifier.size(26.dp)
-                            )
-                            Spacer(Modifier.width(2.dp))
-                            Text("Listeler", color = IOS.Blue, fontSize = 17.sp)
-                        }
-                        Icon(
-                            F7.Plus,
-                            contentDescription = "Kişi ekle",
-                            tint = IOS.Blue,
-                            modifier = Modifier
-                                .size(26.dp)
-                                .clickable { onAdd() }
-                        )
-                    }
-                    LargeTitle("Kişiler")
-                }
-            }
-            item(key = "search", contentType = "search") {
-                SearchField(
-                    value = query,
-                    onValueChange = { query = it },
-                    placeholder = "Ara",
-                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp)
-                )
-            }
             if (showCard) {
                 item {
                     Column {
@@ -251,9 +213,12 @@ fun ContactsScreen(
                         Row(
                             Modifier
                                 .fillMaxWidth()
-                                .padding(start = 16.dp, end = 36.dp, top = 12.dp, bottom = 12.dp),
+                                .padding(start = 16.dp, end = 20.dp, top = 9.dp, bottom = 9.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
+                            // iOS Kişiler listesi her satırda daire foto/baş harf avatarı gösterir.
+                            ContactAvatar(contact.number, contact.name, 40.dp, 16.sp)
+                            Spacer(Modifier.width(14.dp))
                             // iOS: engelli kişinin adının önünde kırmızı yasak işareti (ad kırmızı değil).
                             if (blockKey(contact.number) in ListData.blocked) {
                                 BlockedIcon(16.dp)
@@ -262,7 +227,7 @@ fun ContactsScreen(
                             ContactName(contact.name, Modifier.weight(1f))
                         }
                         HorizontalDivider(
-                            modifier = Modifier.padding(start = 16.dp),
+                            modifier = Modifier.padding(start = 70.dp),
                             thickness = 0.5.dp,
                             color = dividerColor
                         )
@@ -273,7 +238,7 @@ fun ContactsScreen(
 
         if (grouped.isNotEmpty()) {
             AlphabetIndex(
-                modifier = Modifier.align(Alignment.TopEnd).padding(top = 112.dp),
+                modifier = Modifier.align(Alignment.TopEnd).padding(top = 8.dp),
                 onSelect = { letter ->
                     val from = ALPHABET.indexOf(letter)
                     val target = ALPHABET.drop(from).firstOrNull { it in starts }
@@ -283,6 +248,36 @@ fun ContactsScreen(
                     }
                 }
             )
+        }
+    }
+    }
+}
+
+/** iOS 26 Kişiler üst çubuğu: solda cam geri düğmesi, ortada küçük başlık, sağda cam "+" düğmesi. */
+@Composable
+private fun ContactsHeader(onAdd: () -> Unit) {
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 10.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Box(Modifier.align(Alignment.CenterStart)) {
+            // iOS'taki "Listeler"e dönüş (liste/grup özelliği yok; yalnızca görünüm için)
+            GlassCircleButton(onClick = {}) {
+                Icon(F7.ChevronLeft, "Geri", tint = MaterialTheme.colorScheme.onBackground, modifier = Modifier.size(22.dp))
+            }
+        }
+        Text(
+            "Kişiler",
+            fontSize = 17.sp,
+            fontWeight = FontWeight.SemiBold,
+            color = MaterialTheme.colorScheme.onBackground
+        )
+        Box(Modifier.align(Alignment.CenterEnd)) {
+            GlassCircleButton(onClick = onAdd) {
+                Icon(F7.Plus, "Kişi ekle", tint = MaterialTheme.colorScheme.onBackground, modifier = Modifier.size(22.dp))
+            }
         }
     }
 }

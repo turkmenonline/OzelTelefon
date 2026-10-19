@@ -22,13 +22,22 @@ data class EndedUi(val number: String, val displayName: String?, val reason: Str
 
 data class AudioUi(val muted: Boolean = false, val speaker: Boolean = false)
 
-/** Telecom'dan gelen çağrıyı Compose arayüzüne taşıyan basit köprü (tek çağrı). */
+/** Telecom'dan gelen çağrıları Compose arayüzüne taşıyan köprü. Birden çok çağrıyı (bekleyen, birleştirilen) izler. */
 object CallState {
     var service: InCallService? = null
 
-    private var call: Call? = null
+    private val calls = mutableListOf<Call>()
+
+    /** Ekranda gösterilen asıl çağrı. */
     private val _ui = MutableStateFlow<CallUi?>(null)
     val ui: StateFlow<CallUi?> = _ui.asStateFlow()
+
+    /** Asıl çağrının yanındaki ikinci çağrı (beklemede olan ya da çağrı bekleyen). */
+    private val _other = MutableStateFlow<CallUi?>(null)
+    val other: StateFlow<CallUi?> = _other.asStateFlow()
+
+    private val _canMerge = MutableStateFlow(false)
+    val canMerge: StateFlow<Boolean> = _canMerge.asStateFlow()
 
     private val _ended = MutableStateFlow<EndedUi?>(null)
     val ended: StateFlow<EndedUi?> = _ended.asStateFlow()
@@ -53,6 +62,44 @@ object CallState {
         )
     }
 
+    @Suppress("DEPRECATION")
+    private fun st(c: Call): Int = if (Build.VERSION.SDK_INT >= 31) c.details.state else c.state
+
+    /** Konferansın alt çağrıları ayrı gösterilmez; yalnız konferans çağrısı görünür. */
+    private fun visible(): List<Call> = calls.filter { it.parent == null }
+
+    private fun primary(): Call? {
+        val v = visible()
+        return v.firstOrNull { st(it) == Call.STATE_RINGING }
+            ?: v.firstOrNull {
+                st(it) == Call.STATE_ACTIVE || st(it) == Call.STATE_DIALING ||
+                    st(it) == Call.STATE_CONNECTING || st(it) == Call.STATE_PULLING_CALL
+            }
+            ?: v.firstOrNull { st(it) == Call.STATE_HOLDING }
+            ?: v.lastOrNull()
+    }
+
+    private fun secondary(p: Call?): Call? {
+        val l = visible().filter {
+            it !== p && st(it) != Call.STATE_DISCONNECTED && st(it) != Call.STATE_DISCONNECTING
+        }
+        return l.firstOrNull { st(it) == Call.STATE_RINGING }
+            ?: l.firstOrNull { st(it) == Call.STATE_HOLDING }
+            ?: l.firstOrNull()
+    }
+
+    private fun toUi(c: Call): CallUi {
+        val d = c.details
+        val conf = d.hasProperty(Call.Details.PROPERTY_CONFERENCE)
+        return CallUi(
+            state = st(c),
+            number = d.handle?.schemeSpecificPart ?: "",
+            displayName = d.callerDisplayName?.takeIf { it.isNotBlank() }
+                ?: if (conf) "Konferans Araması" else null,
+            connectTime = d.connectTimeMillis
+        )
+    }
+
     private val _audio = MutableStateFlow(AudioUi())
     val audio: StateFlow<AudioUi> = _audio.asStateFlow()
 
@@ -62,44 +109,42 @@ object CallState {
             publish()
         }
         override fun onDetailsChanged(call: Call, details: Call.Details) = publish()
+        override fun onParentChanged(call: Call, parent: Call?) = publish()
+        override fun onChildrenChanged(call: Call, children: List<Call>) = publish()
     }
 
     fun attach(c: Call) {
         _ended.value = null
-        call?.unregisterCallback(callback)
-        call = c
-        c.registerCallback(callback)
+        if (calls.none { it === c }) {
+            calls.add(c)
+            c.registerCallback(callback)
+        }
         publish()
     }
 
+    @Suppress("UNUSED_PARAMETER")
     fun detach(c: Call, remaining: Call?) {
         c.unregisterCallback(callback)
-        if (call === c) {
-            call = remaining
-            remaining?.registerCallback(callback)
-        }
+        calls.removeAll { it === c }
         publish()
     }
 
     fun clear() {
-        call?.unregisterCallback(callback)
-        call = null
+        calls.forEach { it.unregisterCallback(callback) }
+        calls.clear()
         service = null
         publish()
     }
 
-    @Suppress("DEPRECATION")
     private fun publish() {
-        val c = call
-        _ui.value = if (c == null) null else {
-            val state = if (Build.VERSION.SDK_INT >= 31) c.details.state else c.state
-            CallUi(
-                state = state,
-                number = c.details.handle?.schemeSpecificPart ?: "",
-                displayName = c.details.callerDisplayName?.takeIf { it.isNotBlank() },
-                connectTime = c.details.connectTimeMillis
+        val p = primary()
+        val o = secondary(p)
+        _ui.value = p?.let { toUi(it) }
+        _other.value = o?.let { toUi(it) }
+        _canMerge.value = p != null && o != null && (
+            p.details.can(Call.Details.CAPABILITY_MERGE_CONFERENCE) ||
+                o.details.can(Call.Details.CAPABILITY_MERGE_CONFERENCE)
             )
-        }
     }
 
     @Suppress("DEPRECATION")
@@ -112,29 +157,61 @@ object CallState {
     }
 
     fun answer() {
-        call?.answer(VideoProfile.STATE_AUDIO_ONLY)
+        primary()?.answer(VideoProfile.STATE_AUDIO_ONLY)
+    }
+
+    /** Çağrı beklerken: mevcut aramayı beklemeye alıp gelen aramayı yanıtlar. */
+    fun holdAndAnswer() {
+        val p = primary() ?: return
+        secondary(p)?.takeIf { st(it) == Call.STATE_ACTIVE }?.hold()
+        p.answer(VideoProfile.STATE_AUDIO_ONLY)
+    }
+
+    /** Çağrı beklerken: mevcut aramayı bitirip gelen aramayı yanıtlar. */
+    fun endAndAnswer() {
+        val p = primary() ?: return
+        secondary(p)?.takeIf { st(it) == Call.STATE_ACTIVE || st(it) == Call.STATE_HOLDING }?.disconnect()
+        p.answer(VideoProfile.STATE_AUDIO_ONLY)
     }
 
     fun reject() {
-        val c = call ?: return
-        if (_ui.value?.state == Call.STATE_RINGING) c.reject(false, null) else c.disconnect()
+        val c = primary() ?: return
+        if (st(c) == Call.STATE_RINGING) c.reject(false, null) else c.disconnect()
     }
 
     fun hangup() {
-        call?.disconnect()
+        primary()?.disconnect()
     }
 
     fun dtmfStart(c: Char) {
-        call?.playDtmfTone(c)
+        primary()?.playDtmfTone(c)
     }
 
     fun dtmfStop() {
-        call?.stopDtmfTone()
+        primary()?.stopDtmfTone()
     }
 
     fun toggleHold() {
-        val c = call ?: return
-        if (_ui.value?.state == Call.STATE_HOLDING) c.unhold() else c.hold()
+        val c = primary() ?: return
+        if (st(c) == Call.STATE_HOLDING) c.unhold() else c.hold()
+    }
+
+    /** İki arama arasında geçiş: aktif olanı beklemeye alır, beklemedekini geri açar. */
+    fun swap() {
+        val p = primary() ?: return
+        val o = secondary(p) ?: return
+        if (st(o) != Call.STATE_HOLDING) return
+        if (st(p) == Call.STATE_ACTIVE) p.hold()
+        o.unhold()
+    }
+
+    /** İki aramayı konferansta birleştirir. */
+    fun merge() {
+        val p = primary() ?: return
+        val o = secondary(p) ?: return
+        if (p.details.can(Call.Details.CAPABILITY_MERGE_CONFERENCE)) p.mergeConference()
+        else if (o.details.can(Call.Details.CAPABILITY_MERGE_CONFERENCE)) o.mergeConference()
+        else p.conference(o)
     }
 
     @Suppress("DEPRECATION")

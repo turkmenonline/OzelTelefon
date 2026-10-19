@@ -201,7 +201,7 @@ fun RecentsScreen(
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var filter by remember { mutableIntStateOf(0) }
-    var query by remember { mutableStateOf("") }
+    val query = SearchMode.query
     var editing by remember { mutableStateOf(false) }
     var armedKey by remember { mutableStateOf<String?>(null) }
     var showEditMenu by remember { mutableStateOf(false) }
@@ -417,28 +417,38 @@ fun RecentsScreen(
 
 /** "Düzenle"ye basınca açılan iOS tarzı küçük menü. */
 @Composable
-private fun EditPopup(onDismiss: () -> Unit, onNameAndPhoto: () -> Unit, onAddFavorite: () -> Unit, onSelect: () -> Unit) {
+private fun EditPopup(
+    onDismiss: () -> Unit,
+    onNameAndPhoto: () -> Unit,
+    onAddFavorite: () -> Unit,
+    onSelect: () -> Unit
+) {
+    // Seçim/kapatma önce kapanma animasyonunu oynatır, sonra asıl işlem çalışır.
+    var pending by remember { mutableStateOf<(() -> Unit)?>(null) }
+    val dismissReq = { pending = onDismiss }
+    val nameReq = { pending = onNameAndPhoto }
+    val favReq = { pending = onAddFavorite }
+    val selReq = { pending = onSelect }
     val density = androidx.compose.ui.platform.LocalDensity.current
     val dy = with(density) { 48.dp.roundToPx() }
     Popup(
         alignment = Alignment.TopStart,
         offset = IntOffset(0, dy),
-        onDismissRequest = onDismiss,
+        onDismissRequest = dismissReq,
         properties = PopupProperties(focusable = true)
     ) {
-      PopupAppear(TransformOrigin(0f, 0f)) {
+      PopupAppear(TransformOrigin(0f, 0f), visible = pending == null, onGone = { pending?.invoke() }) {
         Column(
             Modifier
                 .width(250.dp)
                 .clip(RoundedCornerShape(14.dp))
                 .background(MaterialTheme.colorScheme.surfaceVariant)
         ) {
-            PopupRow("Ad ve Fotoğraf Ayarla", F7.PersonCropCircleFill, onNameAndPhoto)
+            PopupRow("Ad ve Fotoğraf Ayarla", F7.PersonCropCircleFill, nameReq)
             HorizontalDivider(thickness = 0.5.dp, color = MaterialTheme.colorScheme.background.copy(alpha = 0.5f))
+            PopupRow("Favorilere Ekle", F7.PhoneFill, favReq)
             HorizontalDivider(thickness = 0.5.dp, color = MaterialTheme.colorScheme.background.copy(alpha = 0.5f))
-            PopupRow("Favorilere Ekle", F7.PhoneFill, onAddFavorite)
-            HorizontalDivider(thickness = 0.5.dp, color = MaterialTheme.colorScheme.background.copy(alpha = 0.5f))
-            PopupRow("Seç", F7.CheckmarkCircle, onSelect)
+            PopupRow("Seç", F7.CheckmarkCircle, selReq)
         }
       }
     }
@@ -551,15 +561,9 @@ private fun RecentRow(
                     overflow = TextOverflow.Ellipsis
                 )
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    if (outgoing) {
-                        Icon(
-                            F7.PhoneFillArrowUpRight,
-                            contentDescription = "Giden arama",
-                            tint = IOS.Gray,
-                            modifier = Modifier.size(13.dp)
-                        )
-                        Spacer(Modifier.width(4.dp))
-                    }
+                    // iOS: gelen/cevapsız ↙, giden ↗ (küçük gri ok)
+                    CallDirectionIcon(outgoing = outgoing, tint = IOS.Gray)
+                    Spacer(Modifier.width(4.dp))
                     Text(subtitle, fontSize = 13.sp, color = IOS.Gray, maxLines = 1)
                 }
             }
@@ -620,13 +624,15 @@ private fun FilterPopup(
     val dy = with(density) { 48.dp.roundToPx() }
     val labels = listOf("Aramalar", "Cevapsızlar", "Sesli Mesaj")
     val fg = MaterialTheme.colorScheme.onBackground
+    var pending by remember { mutableStateOf<(() -> Unit)?>(null) }
+    val dismissReq = { pending = onDismiss }
     Popup(
         alignment = Alignment.TopEnd,
         offset = IntOffset(0, dy),
-        onDismissRequest = onDismiss,
+        onDismissRequest = dismissReq,
         properties = PopupProperties(focusable = true)
     ) {
-      PopupAppear(TransformOrigin(1f, 0f)) {
+      PopupAppear(TransformOrigin(1f, 0f), visible = pending == null, onGone = { pending?.invoke() }) {
         Column(
             Modifier
                 .width(290.dp)
@@ -639,8 +645,8 @@ private fun FilterPopup(
                 Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
                 horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                LayoutChoice("Klasik", false, onClassicLayout, Modifier.weight(1f))
-                LayoutChoice("Birleştirilmiş", true, onDismiss, Modifier.weight(1f))
+                LayoutChoice("Klasik", false, { pending = onClassicLayout }, Modifier.weight(1f))
+                LayoutChoice("Birleştirilmiş", true, dismissReq, Modifier.weight(1f))
             }
             HorizontalDivider(thickness = 0.5.dp, color = fg.copy(alpha = 0.12f))
             labels.forEachIndexed { i, label ->
@@ -648,7 +654,7 @@ private fun FilterPopup(
                     Modifier
                         .fillMaxWidth()
                         .height(48.dp)
-                        .iosClickable { onSelect(i) }
+                        .iosClickable { pending = { onSelect(i) } }
                         .padding(horizontal = 16.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
@@ -665,7 +671,7 @@ private fun FilterPopup(
                 Modifier
                     .fillMaxWidth()
                     .height(48.dp)
-                    .iosClickable(onClick = onManageFiltering)
+                    .iosClickable { pending = onManageFiltering }
                     .padding(horizontal = 16.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
@@ -745,6 +751,29 @@ private fun FavoriteTile(fav: Favorite, onCall: (String) -> Unit, modifier: Modi
             Icon(F7.PhoneFill, null, tint = IOS.Gray, modifier = Modifier.size(11.dp))
             Spacer(Modifier.width(3.dp))
             Text(first, fontSize = 13.sp, color = IOS.Gray, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        }
+    }
+}
+
+/** iOS Son Aramalar'daki küçük yön oku: gelen ↙, giden ↗. */
+@Composable
+fun CallDirectionIcon(outgoing: Boolean, tint: Color, modifier: Modifier = Modifier.size(11.dp)) {
+    androidx.compose.foundation.Canvas(modifier) {
+        val w = 1.7.dp.toPx()
+        val m = w / 2f + 0.5f
+        val s = size.width
+        val cap = androidx.compose.ui.graphics.StrokeCap.Round
+        val o = { x: Float, y: Float -> androidx.compose.ui.geometry.Offset(x, y) }
+        if (outgoing) {
+            // ↗: sol-alttan sağ-üste çizgi, sağ-üstte L biçimli başlık
+            drawLine(tint, o(m, s - m), o(s - m, m), w, cap)
+            drawLine(tint, o(s * 0.30f, m), o(s - m, m), w, cap)
+            drawLine(tint, o(s - m, m), o(s - m, s * 0.70f), w, cap)
+        } else {
+            // ↙: sağ-üstten sol-alta çizgi, sol-altta L biçimli başlık
+            drawLine(tint, o(s - m, m), o(m, s - m), w, cap)
+            drawLine(tint, o(m, s * 0.30f), o(m, s - m), w, cap)
+            drawLine(tint, o(m, s - m), o(s * 0.70f, s - m), w, cap)
         }
     }
 }

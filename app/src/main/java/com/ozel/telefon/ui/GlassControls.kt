@@ -41,6 +41,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -78,9 +79,22 @@ fun pressFill(pressed: Boolean): State<Color> =
  * iOS 26'daki gibi yaylı; hafif taşıp yerine oturur.
  */
 @Composable
-fun PopupAppear(origin: TransformOrigin, content: @Composable () -> Unit) {
+fun PopupAppear(
+    origin: TransformOrigin,
+    visible: Boolean = true,
+    onGone: () -> Unit = {},
+    content: @Composable () -> Unit
+) {
     val a = remember { Animatable(0f) }
-    LaunchedEffect(Unit) { a.animateTo(1f, spring(dampingRatio = 0.72f, stiffness = 450f)) }
+    val gone by rememberUpdatedState(onGone)
+    LaunchedEffect(visible) {
+        if (visible) a.animateTo(1f, spring(dampingRatio = 0.72f, stiffness = 450f))
+        else {
+            // Kapanırken tekrar düğmeye doğru küçülüp bulanıklaşır.
+            a.animateTo(0f, tween(170))
+            gone()
+        }
+    }
     Box(
         Modifier.graphicsLayer {
             val sc = 0.55f + 0.45f * a.value
@@ -113,11 +127,14 @@ fun Modifier.glassBackdrop(blur: Float = 26f): Modifier = composed {
     val source = LocalBackdrop.current
     if (source == null || Build.VERSION.SDK_INT < 31) this
     else {
+        // Altta opak zemin: gerçek (keskin) liste yazıları cam yüzeyden görünmesin, sadece bulanık kopya kalsın.
+        val base = MaterialTheme.colorScheme.background
         val blurLayer = rememberGraphicsLayer()
         var pos by remember { mutableStateOf(Offset.Zero) }
         this
             .onGloballyPositioned { pos = it.positionInRoot() }
             .drawBehind {
+                drawRect(base)
                 blurLayer.renderEffect = BlurEffect(blur, blur, TileMode.Clamp)
                 blurLayer.record {
                     translate(-pos.x, -pos.y) { drawLayer(source) }

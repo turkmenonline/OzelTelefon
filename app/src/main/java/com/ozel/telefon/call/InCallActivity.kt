@@ -60,6 +60,8 @@ class InCallActivity : ComponentActivity() {
             OzelTelefonTheme(dark = true) {
                 val ui by CallState.ui.collectAsState()
                 val audio by CallState.audio.collectAsState()
+                val other by CallState.other.collectAsState()
+                val canMerge by CallState.canMerge.collectAsState()
                 val context = LocalContext.current
                 val current = ui
 
@@ -117,6 +119,13 @@ class InCallActivity : ComponentActivity() {
                     val info by produceState<ContactInfo?>(null, shown.number) {
                         value = withContext(Dispatchers.IO) { lookupContact(context, shown.number) }
                     }
+                    val otherCall = other
+                    val otherTitle by produceState("", otherCall?.number, otherCall?.displayName) {
+                        value = if (otherCall == null) "" else withContext(Dispatchers.IO) {
+                            otherCall.displayName ?: lookupContact(context, otherCall.number)?.name
+                                ?: formatNumber(otherCall.number).ifBlank { "Bilinmeyen" }
+                        }
+                    }
                     val bg by produceState(DefaultCallBg, shown.number) {
                         value = withContext(Dispatchers.IO) {
                             val name = lookupContact(context, shown.number)?.name ?: shown.displayName
@@ -128,6 +137,13 @@ class InCallActivity : ComponentActivity() {
                     InCallScreen(
                         bg = bg,
                         ending = current == null,
+                        other = otherCall,
+                        otherTitle = otherTitle,
+                        canMerge = canMerge,
+                        onSwap = { CallState.swap() },
+                        onMerge = { CallState.merge() },
+                        onHoldAnswer = { CallState.holdAndAnswer() },
+                        onEndAnswer = { CallState.endAndAnswer() },
                         ui = shown,
                         info = info,
                         audio = audio,
