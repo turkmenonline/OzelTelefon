@@ -1,6 +1,11 @@
 package com.ozel.telefon.ui
 
 import androidx.compose.animation.core.Animatable
+import androidx.compose.ui.unit.Constraints
+import androidx.compose.ui.layout.layout
+import androidx.compose.ui.layout.positionInRoot
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
@@ -93,6 +98,8 @@ private fun TabBarRow(
     val highlight = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.08f)
 
     var anyPressed by remember { mutableStateOf(false) }
+    var barPos by remember { mutableStateOf(Offset.Zero) }
+    val lensOn = lensShaderActive()
     var dragging by remember { mutableStateOf(false) }
     val lens by animateFloatAsState(
         if (anyPressed || dragging) 1f else 0f,
@@ -103,7 +110,7 @@ private fun TabBarRow(
     val pillAnim = remember { Animatable(selected.toFloat()) }
     val pillSpring = spring<Float>(dampingRatio = 0.72f, stiffness = 380f)
     LaunchedEffect(selected) { if (!dragging) pillAnim.animateTo(selected.toFloat(), pillSpring) }
-    val pill = pillAnim.value
+    val pill = pillAnim.value // sadece 'nearest' için
     val scope = rememberCoroutineScope()
     val currentSelect by rememberUpdatedState(onSelect)
     val currentSelected by rememberUpdatedState(selected)
@@ -124,32 +131,82 @@ private fun TabBarRow(
             modifier = Modifier
                 .weight(1f)
                 .height(62.dp)
-                .shadow(10.dp, CircleShape, ambientColor = shadowColor, spotColor = shadowColor)
-                .clip(CircleShape)
-                .glassBackdrop()
-                .background(glass)
-                .border(BorderStroke(0.5.dp, border), CircleShape)
-                .padding(4.dp)
+                .onGloballyPositioned { barPos = it.positionInRoot() }
+                .graphicsLayer {
+                    val sc = 1f + 0.035f * lens
+                    scaleX = sc
+                    scaleY = sc
+                }
+                .shadow(10.dp, CircleShape, clip = false, ambientColor = shadowColor, spotColor = shadowColor)
         ) {
-            val tabW = maxWidth / labels.size
+            val tabW = (maxWidth - 8.dp) / labels.size
             val tabPx = with(LocalDensity.current) { tabW.toPx() }
-            // Seçili hap sekmeler arasında yaylı kayar. Giderken uzar, basılıyken büyür ("lens" etkisi).
+            val padPx = with(LocalDensity.current) { 4.dp.toPx() }
+            val mxPx = with(LocalDensity.current) { 28.dp.toPx() }
+            val myPx = with(LocalDensity.current) { 20.dp.toPx() }
+            val growXPx = with(LocalDensity.current) { 7.dp.toPx() }
+            val moveXPx = with(LocalDensity.current) { 14.dp.toPx() }
+            val growYPx = with(LocalDensity.current) { 9.dp.toPx() }
+            // Cam gövde (kırpılır). Mercek bunun dışına taşabilsin diye ayrı katman.
             Box(
                 Modifier
-                    .offset { IntOffset((pill * tabW.toPx()).roundToInt(), 0) }
-                    .width(tabW)
-                    .fillMaxHeight()
-                    .graphicsLayer {
-                        val moving = if (dragging) 0f else kotlin.math.abs(pill - selected).coerceIn(0f, 1.5f)
-                        scaleX = 1f + 0.28f * moving + 0.12f * lens
-                        scaleY = 1f + 0.06f * moving + 0.10f * lens
-                    }
-                    .clip(RoundedCornerShape(27.dp))
-                    .background(highlight)
+                    .fillMaxSize()
+                    .clip(CircleShape)
+                    .glassBackdrop()
+                    .background(glass)
+                    .border(BorderStroke(0.5.dp, border), CircleShape)
             )
+            // Seçili hap: gerçek kırılmalı mercek. Şişme shader içinde çizilir; çubuğun dışına taşabilir.
+            Box(Modifier.fillMaxSize().padding(4.dp)) {
+                if (lensOn) {
+                    Box(
+                        Modifier
+                            .layout { measurable, c ->
+                                val w = (tabPx + 2f * mxPx).roundToInt()
+                                val h = (c.maxHeight + 2f * myPx).roundToInt()
+                                val pl = measurable.measure(Constraints.fixed(w, h))
+                                layout(0, 0) {
+                                    pl.place((pillAnim.value * tabPx - mxPx).roundToInt(), (-myPx).roundToInt())
+                                }
+                            }
+                            .liquidLens(
+                                amount = { 0.45f + 0.55f * lens },
+                                expand = {
+                                    val moving = if (dragging) 0f else kotlin.math.abs(pillAnim.value - selected).coerceIn(0f, 1.5f)
+                                    Offset(
+                                        (growXPx * lens + moveXPx * moving).coerceAtMost(mxPx - 10f),
+                                        growYPx * lens
+                                    )
+                                },
+                                margin = Offset(mxPx, myPx),
+                                origin = {
+                                    Offset(
+                                        barPos.x + padPx + pillAnim.value * tabPx - mxPx,
+                                        barPos.y + padPx - myPx
+                                    )
+                                }
+                            )
+                    )
+                } else {
+                    Box(
+                        Modifier
+                            .offset { IntOffset((pillAnim.value * tabPx).roundToInt(), 0) }
+                            .width(tabW)
+                            .fillMaxHeight()
+                            .graphicsLayer {
+                                val moving = if (dragging) 0f else kotlin.math.abs(pillAnim.value - selected).coerceIn(0f, 1.5f)
+                                scaleX = 1f + 0.28f * moving + 0.14f * lens
+                                scaleY = 1f + 0.06f * moving + 0.30f * lens
+                            }
+                            .clip(RoundedCornerShape(27.dp))
+                            .background(highlight)
+                    )
+                }
+            }
             Row(
                 Modifier
                     .fillMaxSize()
+                    .padding(4.dp)
                     .pointerInput(tabPx, labels.size) {
                         val last = (labels.size - 1).toFloat()
                         fun finish() {
@@ -186,7 +243,13 @@ private fun TabBarRow(
                         modifier = Modifier
                             .weight(1f)
                             .fillMaxHeight()
-                            .graphicsLayer { scaleX = sc; scaleY = sc }
+                            .graphicsLayer {
+                                // Mercek altındaki ikon büyür (iOS 26): hapa yakınlık * mercek gücü.
+                                val near = (1f - kotlin.math.abs(pillAnim.value - i)).coerceIn(0f, 1f)
+                                val zoom = 1f + 0.22f * lens * near
+                                scaleX = sc * zoom
+                                scaleY = sc * zoom
+                            }
                             .clip(RoundedCornerShape(27.dp))
                             .clickable(interactionSource = src, indication = null) { onSelect(i) },
                         horizontalAlignment = Alignment.CenterHorizontally,
